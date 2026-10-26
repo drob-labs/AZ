@@ -55,7 +55,6 @@ export default function Login() {
           onChangeText={setPersonnelNo}
           autoCapitalize="none"
           autoCorrect={false}
-          keyboardType="number-pad"
           returnKeyType="next"
           accessibilityLabel={t('personnelNo')}
         />
