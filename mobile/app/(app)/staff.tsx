@@ -91,7 +91,7 @@ export default function Staff() {
     );
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <View style={styles.head}>
         <Text style={styles.title}>{t('tabStaff')}</Text>
         <Pressable style={styles.addBtn} onPress={() => setAdding(true)} accessibilityRole="button">
@@ -206,7 +206,7 @@ function AddModal({ minWage, onClose, onDone }: { minWage: number | null; onClos
         <View style={styles.sheet}>
           {created ? (
             <View style={{ gap: 12 }}>
-              <Text style={styles.sheetTitle}>✓ {t('employeeCreated')}</Text>
+              <Text style={styles.sheetTitle}>{t('employeeCreated')}</Text>
               <Text style={styles.name}>{created.name}</Text>
               <View style={styles.cred}>
                 <Text style={styles.label}>{t('personnelNo')}</Text>
@@ -253,7 +253,7 @@ function AddModal({ minWage, onClose, onDone }: { minWage: number | null; onClos
               <Field label={t('hourlyRate')}>
                 <TextInput style={styles.input} value={rate} onChangeText={setRate} keyboardType="decimal-pad" placeholder="18.00" />
               </Field>
-              {lowRate && <Text style={styles.warn}>⚠ {t('belowMinWage', { min: ((minWage ?? 0) / 100).toFixed(2) })}</Text>}
+              {lowRate && <Text style={styles.warn}>{t('belowMinWage', { min: ((minWage ?? 0) / 100).toFixed(2) })}</Text>}
               <Field label={t('weeklyHours')}>
                 <TextInput style={styles.input} value={hours} onChangeText={setHours} keyboardType="decimal-pad" />
               </Field>
@@ -354,7 +354,7 @@ function DetailModal({
                 </Pressable>
               </View>
             </Field>
-            {lowRate && <Text style={styles.warn}>⚠ {t('belowMinWage', { min: ((minWage ?? 0) / 100).toFixed(2) })}</Text>}
+            {lowRate && <Text style={styles.warn}>{t('belowMinWage', { min: ((minWage ?? 0) / 100).toFixed(2) })}</Text>}
 
             <Field label={t('resetPin')}>
               <View style={{ flexDirection: 'row', gap: 8 }}>

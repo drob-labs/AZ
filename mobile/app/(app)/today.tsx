@@ -7,7 +7,6 @@ import { formatClock, formatDuration, formatTime } from '../../src/lib/format';
 import { nowIso } from '../../src/lib/id';
 import { useSession } from '../../src/state/session';
 import { useTracker } from '../../src/state/tracker';
-import { Logo } from '../../src/ui/Logo';
 import { colors } from '../../src/ui/theme';
 
 const BREAK_CHOICES = [15, 30, 45, 60];
@@ -71,9 +70,8 @@ export default function Today() {
       : t('allSynced');
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <View style={styles.header}>
-        <Logo height={56} />
         <Text style={styles.hello}>{employee ? `${employee.first_name} ${employee.last_name}` : ''}</Text>
         <Text style={[styles.status, { color: idle ? colors.muted : paused ? colors.pause : colors.start }]}>
           {statusText}
@@ -101,7 +99,7 @@ export default function Today() {
             }
             accessibilityRole="link"
           >
-            <Text style={styles.siteName}>📍 {currentSite.name}</Text>
+            <Text style={styles.siteName}>{currentSite.name}</Text>
             {currentSite.address ? <Text style={styles.siteAddr}>{currentSite.address} · {t('openMap')}</Text> : null}
           </Pressable>
         )}

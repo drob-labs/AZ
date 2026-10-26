@@ -49,7 +49,7 @@ export default function Team() {
   );
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <View style={styles.head}>
         <Text style={styles.title}>{t('workingNow')}</Text>
         <Text style={styles.count}>{rows.length}</Text>
@@ -75,11 +75,11 @@ export default function Team() {
                 </Text>
                 {item.sites ? (
                   <Text style={styles.site}>
-                    📍 {item.sites.name}
+                    {item.sites.name}
                     {item.sites.address ? ` · ${item.sites.address}` : ''}
                   </Text>
                 ) : null}
-                {forgotten && <Text style={styles.warn}>⚠ {t('forgotStop')}</Text>}
+                {forgotten && <Text style={styles.warn}>{t('forgotStop')}</Text>}
               </View>
               <View style={[styles.badge, { backgroundColor: paused ? colors.pause : colors.start }]}>
                 <Text style={styles.badgeText}>{paused ? t('onBreak') : t('statusWorking')}</Text>

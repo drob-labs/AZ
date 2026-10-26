@@ -57,7 +57,7 @@ export default function Sites() {
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <View style={styles.head}>
         <Text style={styles.title}>{t('sitesTitle')}</Text>
         <Pressable style={styles.addBtn} onPress={() => setEditing('new')} accessibilityRole="button">
@@ -91,7 +91,7 @@ export default function Sites() {
         renderItem={({ item }) => (
           <Pressable style={styles.row} onPress={() => setEditing(item)}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.name}>📍 {item.name}</Text>
+              <Text style={styles.name}>{item.name}</Text>
               {item.address ? <Text style={styles.sub}>{item.address}</Text> : null}
             </View>
             <View style={[styles.badge, { backgroundColor: item.active ? colors.start : colors.muted }]}>

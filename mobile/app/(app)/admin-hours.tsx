@@ -133,7 +133,7 @@ export default function AdminHours() {
 
   const totalMin = useMemo(() => rows.reduce((s, r) => s + r.workedMin, 0), [rows]);
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <View style={styles.head}>
         <Text style={styles.title}>{t('adminTabHours')}</Text>
         <View style={styles.monthRow}>
@@ -175,12 +175,12 @@ export default function AdminHours() {
                 {item.server.ended_at ? formatTime(item.server.ended_at) : t('openShift')}
                 {item.server.source === 'admin' ? `  ✎ ${t('correctedByOffice')}` : ''}
               </Text>
-              {item.server.sites ? <Text style={styles.site}>📍 {item.server.sites.name}</Text> : null}
+              {item.server.sites ? <Text style={styles.site}>{item.server.sites.name}</Text> : null}
               {item.warnings
                 .filter((w) => WARNING_KEY[w.code])
                 .map((w) => (
                   <Text key={w.code} style={styles.warn}>
-                    ⚠ {t(WARNING_KEY[w.code] as keyof Dict)}
+                    {t(WARNING_KEY[w.code] as keyof Dict)}
                   </Text>
                 ))}
             </View>

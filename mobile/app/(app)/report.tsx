@@ -168,7 +168,7 @@ export default function MonthReport() {
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
         <Text style={styles.title}>{t('monthReport')}</Text>
         <View style={styles.monthRow}>
@@ -179,7 +179,7 @@ export default function MonthReport() {
           <Pressable onPress={() => setMonth((m) => shiftMonth(m, 1))} style={styles.arrow} accessibilityLabel="›">
             <Text style={styles.arrowText}>›</Text>
           </Pressable>
-          {closedAt && <Text style={styles.closed}>🔒 {t('monthClosed')}</Text>}
+          {closedAt && <Text style={styles.closed}>{t('monthClosed')}</Text>}
         </View>
 
         {loading && <ActivityIndicator />}
@@ -214,7 +214,7 @@ export default function MonthReport() {
             {blocked && <Text style={styles.error}>{t('openShiftsBlock', { n: report.openShiftCount })}</Text>}
             {noRateNames.length > 0 && (
               <Text style={styles.warn}>
-                ⚠ {t('noRateBlock')} {noRateNames.join(', ')}
+                {t('noRateBlock')} {noRateNames.join(', ')}
               </Text>
             )}
 
@@ -233,7 +233,7 @@ export default function MonthReport() {
                 disabled={busy || blocked}
                 onPress={() => setConfirming(true)}
               >
-                <Text style={styles.btnText}>🔒 {t('closeMonth')}</Text>
+                <Text style={styles.btnText}>{t('closeMonth')}</Text>
               </Pressable>
             )}
           </>

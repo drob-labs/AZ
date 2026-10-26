@@ -98,7 +98,7 @@ export default function Hours() {
   }, [server, tr.state, tr.sites, monthPrefix]);
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <View style={styles.head}>
         <Text style={styles.title}>{t('hoursTitle')}</Text>
         <Text style={styles.sub}>
@@ -122,12 +122,12 @@ export default function Hours() {
                   {formatTime(item.shift.startedAt)} –{' '}
                   {item.shift.endedAt ? formatTime(item.shift.endedAt) : t('openShift')}
                 </Text>
-                {item.shift.siteName ? <Text style={styles.site}>📍 {item.shift.siteName}</Text> : null}
+                {item.shift.siteName ? <Text style={styles.site}>{item.shift.siteName}</Text> : null}
                 {item.warnings
                   .filter((w) => WARNING_KEY[w.code])
                   .map((w) => (
                     <Text key={w.code} style={styles.warn}>
-                      ⚠ {t(WARNING_KEY[w.code] as keyof Dict)}
+                      {t(WARNING_KEY[w.code] as keyof Dict)}
                     </Text>
                   ))}
               </View>

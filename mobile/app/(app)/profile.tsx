@@ -33,7 +33,7 @@ export default function Profile() {
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <View style={styles.body}>
         <Text style={styles.name}>{employee ? `${employee.first_name} ${employee.last_name}` : ''}</Text>
         <Text style={styles.no}>{employee?.personnel_no}</Text>
