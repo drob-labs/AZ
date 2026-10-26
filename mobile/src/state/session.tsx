@@ -11,6 +11,7 @@ export interface Employee {
   last_name: string;
   role: 'worker' | 'admin';
   locale: 'sq' | 'de';
+  avatar_path: string | null;
 }
 
 interface SessionCtx {
@@ -19,6 +20,7 @@ interface SessionCtx {
   employee: Employee | null;
   signIn: (personnelNo: string, pin: string) => Promise<boolean>;
   signOut: () => Promise<void>;
+  refreshEmployee: () => Promise<void>;
 }
 
 const Ctx = createContext<SessionCtx>({
@@ -27,12 +29,13 @@ const Ctx = createContext<SessionCtx>({
   employee: null,
   signIn: async () => false,
   signOut: async () => {},
+  refreshEmployee: async () => {},
 });
 
 async function fetchEmployee(userId: string): Promise<Employee | null> {
   const { data } = await supabase
     .from('employees')
-    .select('id, personnel_no, first_name, last_name, role, locale')
+    .select('id, personnel_no, first_name, last_name, role, locale, avatar_path')
     .eq('user_id', userId)
     .eq('active', true)
     .maybeSingle();
@@ -79,9 +82,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setEmployee(null);
   }, []);
 
+  const refreshEmployee = useCallback(async () => {
+    if (!session) return;
+    const emp = await fetchEmployee(session.user.id);
+    if (emp) setEmployee(emp);
+  }, [session]);
+
   const value = useMemo(
-    () => ({ loading, session, employee, signIn, signOut }),
-    [loading, session, employee, signIn, signOut],
+    () => ({ loading, session, employee, signIn, signOut, refreshEmployee }),
+    [loading, session, employee, signIn, signOut, refreshEmployee],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

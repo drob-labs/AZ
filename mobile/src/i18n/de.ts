@@ -40,6 +40,12 @@ export const de: Dict = {
   noHours: 'In diesem Monat noch keine Stunden.',
   hoursOffline: 'Es werden nur Daten auf dem Handy angezeigt (keine Verbindung).',
   language: 'Sprache',
+  photo: 'Profilfoto',
+  photoChoose: 'Foto auswählen',
+  photoChange: 'Foto ändern',
+  photoRemove: 'Foto entfernen',
+  photoError: 'Das Foto konnte nicht hochgeladen werden. Bitte erneut versuchen.',
+  photoDenied: 'Kein Zugriff auf die Fotos erlaubt.',
   logout: 'Abmelden',
   logoutPending:
     'Es gibt noch nicht übertragene Stunden. Beim Abmelden gehen sie verloren. Bitte warte, bis sie übertragen sind.',

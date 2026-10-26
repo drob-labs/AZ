@@ -33,6 +33,12 @@
     "plugins": [
       "expo-router",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "AZ Zeiterfassung braucht Zugriff auf Ihre Fotos, um ein Profilfoto auszuwählen."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#14181F",
