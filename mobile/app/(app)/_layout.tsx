@@ -34,8 +34,8 @@ export default function AppLayout() {
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600', letterSpacing: 0.2, marginBottom: 4 },
         tabBarItemStyle: { paddingVertical: 4, minWidth: 0 },
         tabBarStyle: {
-          height: 62 + insets.bottom,
-          paddingBottom: insets.bottom,
+          height: 72 + insets.bottom,
+          paddingBottom: insets.bottom + 6,
           backgroundColor: colors.card,
           borderTopColor: colors.border,
         },
@@ -46,9 +46,9 @@ export default function AppLayout() {
       <Tabs.Screen name="team" options={{ title: t('adminTabNow'), tabBarIcon: tabIcon('hardHat'), ...adminOnly }} />
       <Tabs.Screen name="admin-hours" options={{ title: t('adminTabHours'), tabBarIcon: tabIcon('clock'), ...adminOnly }} />
       <Tabs.Screen name="report" options={{ title: t('tabMonth'), tabBarIcon: tabIcon('calendarBlank'), ...adminOnly }} />
-      <Tabs.Screen name="sites" options={{ title: t('sitesTitle'), tabBarIcon: tabIcon('buildings'), ...adminOnly }} />
+      <Tabs.Screen name="sites" options={{ title: t('sitesTitle'), tabBarIcon: tabIcon('buildings'), href: null }} />
       <Tabs.Screen name="staff" options={{ title: t('tabStaff'), tabBarIcon: tabIcon('usersThree'), ...adminOnly }} />
-      <Tabs.Screen name="profile" options={{ title: t('tabProfile') }} />
+      <Tabs.Screen name="profile" options={{ title: t('tabProfile'), tabBarIcon: tabIcon('userCircle') }} />
     </Tabs>
   );
 }
