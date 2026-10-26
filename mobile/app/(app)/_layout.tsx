@@ -1,5 +1,6 @@
 import { Redirect, Tabs } from 'expo-router';
 import { Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../../src/i18n';
 import { useSession } from '../../src/state/session';
 import { colors } from '../../src/ui/theme';
@@ -8,6 +9,7 @@ const icon = (glyph: string) => () => <Text style={{ fontSize: 20 }}>{glyph}</Te
 
 export default function AppLayout() {
   const { t } = useI18n();
+  const insets = useSafeAreaInsets();
   const { loading, session, employee } = useSession();
   if (!loading && (!session || !employee)) return <Redirect href="/login" />;
 
@@ -21,7 +23,10 @@ export default function AppLayout() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
-        tabBarLabelStyle: { fontSize: 13, fontWeight: '600' },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600', marginBottom: 4 },
+        tabBarIconStyle: { marginTop: 4 },
+        tabBarItemStyle: { paddingVertical: 4, minWidth: 0 },
+        tabBarStyle: { height: 68 + insets.bottom, paddingBottom: insets.bottom },
       }}
     >
       <Tabs.Screen name="today" options={{ title: t('tabToday'), tabBarIcon: icon('⏱'), ...workerOnly }} />
