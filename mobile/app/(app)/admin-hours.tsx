@@ -22,6 +22,9 @@ import { formatDay, formatDuration, formatTime } from '../../src/lib/format';
 import { nowIso } from '../../src/lib/id';
 import { supabase } from '../../src/lib/supabase';
 import { WARNING_KEY } from '../../src/lib/warnings';
+import { Avatar } from '../../src/ui/Avatar';
+import { Icon } from '../../src/ui/Icon';
+import { KeyboardBackdrop } from '../../src/ui/KeyboardBackdrop';
 import { colors } from '../../src/ui/theme';
 
 interface Emp {
@@ -29,6 +32,7 @@ interface Emp {
   first_name: string;
   last_name: string;
   personnel_no: string;
+  avatar_path: string | null;
 }
 interface ServerShift {
   id: string;
@@ -36,7 +40,7 @@ interface ServerShift {
   started_at: string;
   ended_at: string | null;
   declared_break_min: number | null;
-  source: 'app' | 'admin';
+  source: 'app' | 'admin' | 'auto';
   month_closed: boolean;
   sites: { name: string } | null;
   breaks: { started_at: string; ended_at: string | null }[];
@@ -78,11 +82,13 @@ export default function AdminHours() {
   const [rows, setRows] = useState<Row[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     supabase
       .from('employees')
-      .select('id, first_name, last_name, personnel_no')
+      .select('id, first_name, last_name, personnel_no, avatar_path')
       .eq('active', true)
       .eq('role', 'worker')
       .order('last_name')
@@ -131,6 +137,11 @@ export default function AdminHours() {
     }, [load]),
   );
 
+  const current = emps.find((e) => e.id === empId) ?? null;
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? emps.filter((e) => `${e.first_name} ${e.last_name} ${e.personnel_no}`.toLowerCase().includes(q)) : emps;
+  }, [emps, query]);
   const totalMin = useMemo(() => rows.reduce((s, r) => s + r.workedMin, 0), [rows]);
   return (
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
@@ -148,16 +159,23 @@ export default function AdminHours() {
             {t('total')}: {formatDuration(totalMin)}
           </Text>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-          {emps.length === 0 && <Text style={styles.muted}>{t('noEmployees')}</Text>}
-          {emps.map((e) => (
-            <Pressable key={e.id} onPress={() => setEmpId(e.id)} style={[styles.chip, empId === e.id && styles.chipOn]}>
-              <Text style={[styles.chipText, empId === e.id && { color: '#fff' }]}>
-                {e.first_name} {e.last_name}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+        <Pressable style={styles.picker} onPress={() => setPicking(true)} accessibilityRole="button">
+          {current ? (
+            <>
+              <Avatar path={current.avatar_path} first={current.first_name} last={current.last_name} size={36} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pickerName}>
+                  {current.first_name} {current.last_name}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <Text style={[styles.pickerName, { flex: 1 }]}>{emps.length === 0 ? t('noEmployees') : t('pickEmployee')}</Text>
+          )}
+          <View style={styles.pickerChevron}>
+            <Icon name="caretRight" color={colors.muted} size={18} />
+          </View>
+        </Pressable>
       </View>
 
       <FlatList
@@ -174,6 +192,7 @@ export default function AdminHours() {
                 {formatTime(item.server.started_at)} –{' '}
                 {item.server.ended_at ? formatTime(item.server.ended_at) : t('openShift')}
                 {item.server.source === 'admin' ? `  ✎ ${t('correctedByOffice')}` : ''}
+                {item.server.source === 'auto' ? `  ⟳ ${t('autoLabel')}` : ''}
               </Text>
               {item.server.sites ? <Text style={styles.site}>{item.server.sites.name}</Text> : null}
               {item.warnings
@@ -188,6 +207,54 @@ export default function AdminHours() {
           </Pressable>
         )}
       />
+
+      {picking && (
+        <Modal visible transparent statusBarTranslucent animationType="slide" onRequestClose={() => setPicking(false)}>
+          <Pressable style={styles.pickBackdrop} onPress={() => setPicking(false)}>
+            <Pressable style={styles.pickSheet} onPress={() => {}}>
+              <View style={styles.grabber} />
+              <Text style={styles.pickTitle}>{t('pickEmployee')}</Text>
+              {emps.length > 6 && (
+                <TextInput
+                  style={styles.search}
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder={t('searchEmployee')}
+                  placeholderTextColor={colors.muted}
+                />
+              )}
+              <FlatList
+                data={filtered}
+                keyExtractor={(e) => e.id}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ gap: 8, paddingTop: 8 }}
+                ListEmptyComponent={<Text style={styles.empty}>{t('noEmployees')}</Text>}
+                renderItem={({ item }) => {
+                  const on = item.id === empId;
+                  return (
+                    <Pressable
+                      style={[styles.pickRow, on && styles.pickRowOn]}
+                      onPress={() => {
+                        setEmpId(item.id);
+                        setPicking(false);
+                        setQuery('');
+                      }}
+                    >
+                      <Avatar path={item.avatar_path} first={item.first_name} last={item.last_name} size={44} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.pickerName}>
+                          {item.first_name} {item.last_name}
+                        </Text>
+                      </View>
+                      {on && <Text style={styles.pickCheck}>✓</Text>}
+                    </Pressable>
+                  );
+                }}
+              />
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
 
       {editing && (
         <EditModal
@@ -260,8 +327,8 @@ function EditModal({ row, onClose, onSaved }: { row: Row; onClose: () => void; o
   const locked = s.month_closed;
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+    <Modal visible transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
+      <KeyboardBackdrop style={styles.backdrop}>
         <View style={styles.sheet}>
           <ScrollView contentContainerStyle={{ gap: 10 }} keyboardShouldPersistTaps="handled">
             <Text style={styles.sheetTitle}>
@@ -320,7 +387,7 @@ function EditModal({ row, onClose, onSaved }: { row: Row; onClose: () => void; o
             )}
           </ScrollView>
         </View>
-      </View>
+      </KeyboardBackdrop>
     </Modal>
   );
 }
@@ -334,6 +401,18 @@ const styles = StyleSheet.create({
   arrowText: { fontSize: 22, color: colors.text },
   month: { fontSize: 18, fontWeight: '700', color: colors.text },
   total: { marginLeft: 'auto', fontSize: 17, color: colors.muted },
+  picker: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 10 },
+  pickerName: { fontSize: 17, fontWeight: '700', color: colors.text },
+  pickerSub: { fontSize: 13, color: colors.muted, marginTop: 1 },
+  pickerChevron: { marginRight: 4, transform: [{ rotate: '90deg' }] },
+  pickBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  pickSheet: { backgroundColor: colors.bg, padding: 20, paddingTop: 10, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '80%' },
+  grabber: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: colors.border, marginBottom: 14 },
+  pickTitle: { fontSize: 22, fontWeight: '700', color: colors.text },
+  search: { marginTop: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, fontSize: 16, color: colors.text, backgroundColor: colors.card },
+  pickRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.card, borderRadius: 14, padding: 10, borderWidth: 1, borderColor: colors.border },
+  pickRowOn: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  pickCheck: { fontSize: 22, fontWeight: '700', color: colors.primary, marginRight: 6 },
   chip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
   chipOn: { backgroundColor: colors.text, borderColor: colors.text },
   chipText: { fontSize: 15, fontWeight: '600', color: colors.text },

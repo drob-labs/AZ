@@ -33,15 +33,14 @@ export interface Site {
   id: string;
   name: string;
   address: string | null;
+  photo_path?: string | null;
 }
 
 interface Settings {
   breakMode: 'button' | 'ask_at_stop' | 'fixed';
   fixedBreakMin: number;
-  /** Nëse true, punëtori duhet të zgjedhë Baustelle para START. */
-  requireSite: boolean;
 }
-const defaultSettings: Settings = { breakMode: 'ask_at_stop', fixedBreakMin: 30, requireSite: false };
+const defaultSettings: Settings = { breakMode: 'ask_at_stop', fixedBreakMin: 30 };
 
 const SITES_KEY = 'az.sites.v1';
 const LAST_SITE_KEY = 'az.lastSite';
@@ -109,9 +108,7 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
     AsyncStorage.getItem(SITES_KEY)
       .then((raw) => {
         if (!raw) return;
-        const cached = JSON.parse(raw) as { sites: Site[]; requireSite: boolean };
-        setSites(cached.sites);
-        setSettings((cur) => ({ ...cur, requireSite: cached.requireSite }));
+        setSites((JSON.parse(raw) as { sites: Site[] }).sites);
       })
       .catch(() => {});
     loadTrackerState().then((s) => {
@@ -152,24 +149,20 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
     if (!ready || !session) return;
     (async () => {
       const [st, si, last] = await Promise.all([
-        supabase.from('settings').select('break_mode, fixed_break_min, require_site').maybeSingle(),
-        supabase.from('sites').select('id, name, address').eq('active', true).order('name'),
+        supabase.from('settings').select('break_mode, fixed_break_min').maybeSingle(),
+        supabase.from('sites').select('id, name, address, photo_path').eq('active', true).order('name'),
         AsyncStorage.getItem(LAST_SITE_KEY).catch(() => null),
       ]);
       if (st.data) {
         setSettings({
           breakMode: st.data.break_mode,
           fixedBreakMin: st.data.fixed_break_min,
-          requireSite: st.data.require_site,
         });
       }
       if (si.data) {
         const list = (si.data as Site[]).sort((a, b) => (a.id === last ? -1 : b.id === last ? 1 : 0));
         setSites(list);
-        AsyncStorage.setItem(
-          SITES_KEY,
-          JSON.stringify({ sites: list, requireSite: st.data?.require_site ?? false }),
-        ).catch(() => {});
+        AsyncStorage.setItem(SITES_KEY, JSON.stringify({ sites: list })).catch(() => {});
       }
     })();
   }, [ready, session]);

@@ -7,7 +7,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "de.azinnenausbau.zeiterfassung",
@@ -35,7 +34,9 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "AZ Zeiterfassung braucht Zugriff auf Ihre Fotos, um ein Profilfoto auszuwählen."
+          "photosPermission": "AZ Zeiterfassung braucht Zugriff auf Ihre Fotos, um ein Profilfoto auszuwählen.",
+          "cameraPermission": false,
+          "microphonePermission": false
         }
       ],
       [
@@ -46,7 +47,8 @@
           "imageWidth": 220
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "@react-native-community/datetimepicker"
     ]
   }
 }

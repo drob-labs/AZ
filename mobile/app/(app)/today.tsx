@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react';
-import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import { Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { berlinHhmm, berlinParts, weekday } from '../../src/core/berlin';
 import { elapsedWorkedMin, workedMs } from '../../src/core/tracker';
 import { useI18n } from '../../src/i18n';
 import { formatClock, formatDuration, formatTime } from '../../src/lib/format';
 import { nowIso } from '../../src/lib/id';
+import { fetchOpenAutoShift, fetchRoutine, skipRoutineToday, stopRoutineNow, type ServerRoutine } from '../../src/lib/routine';
+import { sitePhotoUrl } from '../../src/lib/sitePhoto';
 import { useSession } from '../../src/state/session';
 import { useTracker } from '../../src/state/tracker';
 import { colors } from '../../src/ui/theme';
@@ -22,6 +26,44 @@ export default function Today() {
   const [pickSite, setPickSite] = useState(false);
 
   const currentSite = tr.sites.find((x) => x.id === tr.current?.siteId) ?? null;
+
+  // Rutina automatike: turni që serveri e ka nisur vetë dhe, nëse rutina nis më vonë sot, një kujtesë me mundësi anashkalimi.
+  const [routine, setRoutine] = useState<ServerRoutine | null>(null);
+  const [autoShift, setAutoShift] = useState<{ id: string; started_at: string } | null>(null);
+  const [routineBusy, setRoutineBusy] = useState(false);
+
+  const loadRoutine = useCallback(async () => {
+    if (!employee) return;
+    const [r, a] = await Promise.all([fetchRoutine(employee.id), fetchOpenAutoShift(employee.id)]);
+    setRoutine(r);
+    setAutoShift(a);
+  }, [employee]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadRoutine();
+      const id = setInterval(loadRoutine, 60_000);
+      return () => clearInterval(id);
+    }, [loadRoutine]),
+  );
+
+  async function routineAction(fn: () => Promise<boolean>) {
+    setRoutineBusy(true);
+    await fn();
+    await loadRoutine();
+    setRoutineBusy(false);
+  }
+
+  const todayDate = berlinParts(nowIso()).date;
+  const isoToday = weekday(todayDate) === 0 ? 7 : weekday(todayDate);
+  const routineUpcoming =
+    !!routine &&
+    routine.enabled &&
+    !autoShift &&
+    routine.days.includes(isoToday) &&
+    routine.skipDate !== todayDate &&
+    routine.effectiveFrom <= todayDate &&
+    berlinHhmm(nowIso()) < routine.startTime;
 
   function onStart() {
     // Punëtorët janë në vende të ndryshme: zgjedhin Baustelle-n para START (nëse ka të regjistruara).
@@ -78,6 +120,22 @@ export default function Today() {
         </Text>
       </View>
 
+      {autoShift && routine ? (
+        <View style={styles.banner}>
+          <Text style={styles.bannerText}>{t('routineAutoBanner', { from: formatTime(autoShift.started_at), to: routine.endTime })}</Text>
+          <Pressable style={[styles.bannerBtn, routineBusy && { opacity: 0.5 }]} disabled={routineBusy} onPress={() => routineAction(stopRoutineNow)} accessibilityRole="button">
+            <Text style={styles.bannerBtnText}>{t('routineStopNow')}</Text>
+          </Pressable>
+        </View>
+      ) : routineUpcoming && routine ? (
+        <View style={[styles.banner, styles.bannerSoft]}>
+          <Text style={[styles.bannerText, { color: colors.text }]}>{t('routineUpcoming', { from: routine.startTime })}</Text>
+          <Pressable style={[styles.bannerBtn, styles.bannerBtnSoft, routineBusy && { opacity: 0.5 }]} disabled={routineBusy} onPress={() => routineAction(skipRoutineToday)} accessibilityRole="button">
+            <Text style={[styles.bannerBtnText, { color: colors.text }]}>{t('routineSkipToday')}</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <View style={styles.center}>
         <Text style={styles.timerLabel}>{t('workedToday')}</Text>
         <Text style={styles.timer} accessibilityLabel={t('workedToday')}>
@@ -106,7 +164,8 @@ export default function Today() {
 
         <Pressable
           onPress={idle ? onStart : () => setConfirmStop(true)}
-          style={[styles.big, { backgroundColor: idle ? colors.start : colors.stop }]}
+          disabled={idle && !!autoShift}
+          style={[styles.big, { backgroundColor: idle ? colors.start : colors.stop }, idle && !!autoShift && { opacity: 0.35 }]}
           accessibilityRole="button"
           accessibilityLabel={idle ? t('start') : t('stop')}
         >
@@ -135,15 +194,13 @@ export default function Today() {
             <ScrollView contentContainerStyle={{ gap: 10, paddingVertical: 8 }}>
               {tr.sites.map((x) => (
                 <Pressable key={x.id} style={styles.siteChoice} onPress={() => startAt(x.id)} accessibilityRole="button">
-                  <Text style={styles.siteChoiceName}>{x.name}</Text>
-                  {x.address ? <Text style={styles.siteChoiceAddr}>{x.address}</Text> : null}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.siteChoiceName}>{x.name}</Text>
+                    {x.address ? <Text style={styles.siteChoiceAddr}>{x.address}</Text> : null}
+                  </View>
+                  {x.photo_path ? <Image source={{ uri: sitePhotoUrl(x.photo_path)! }} style={styles.siteChoicePhoto} /> : null}
                 </Pressable>
               ))}
-              {!tr.settings.requireSite && (
-                <Pressable style={[styles.siteChoice, { backgroundColor: colors.bg }]} onPress={() => startAt(null)}>
-                  <Text style={[styles.siteChoiceName, { color: colors.muted }]}>{t('noSite')}</Text>
-                </Pressable>
-              )}
             </ScrollView>
             <Pressable onPress={() => setPickSite(false)} style={styles.cancel}>
               <Text style={styles.cancelText}>{t('cancel')}</Text>
@@ -219,7 +276,15 @@ const styles = StyleSheet.create({
   siteBox: { alignItems: 'center', marginBottom: 12, paddingHorizontal: 24 },
   siteName: { fontSize: 18, fontWeight: '700', color: colors.text },
   siteAddr: { fontSize: 14, color: colors.primary, marginTop: 2, textAlign: 'center' },
-  siteChoice: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 16 },
+  banner: { marginHorizontal: 16, marginTop: 4, padding: 12, borderRadius: 14, backgroundColor: colors.primary, gap: 8 },
+  bannerSoft: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+  bannerText: { color: '#fff', fontSize: 14, fontWeight: '600', lineHeight: 19 },
+  bannerBtn: { alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 10, paddingVertical: 7, paddingHorizontal: 14 },
+  bannerBtnSoft: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border },
+  bannerBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  siteChoice: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  // Gjerësi e fiksuar, lartësia ndjek tekstin e kartës: foto nuk e rrit kartën.
+  siteChoicePhoto: { width: 72, alignSelf: 'stretch', borderRadius: 8, backgroundColor: colors.primarySoft },
   siteChoiceName: { fontSize: 20, fontWeight: '700', color: colors.text },
   siteChoiceAddr: { fontSize: 14, color: colors.muted, marginTop: 2 },
   big: {

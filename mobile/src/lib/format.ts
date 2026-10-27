@@ -3,10 +3,16 @@ import { berlinParts, weekday } from '../core/berlin';
 const DAY_NAMES = {
   sq: ['Die', 'Hën', 'Mar', 'Mër', 'Enj', 'Pre', 'Sht'],
   de: ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'],
+  en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
 };
 
+/** Emri i shkurtër i ditës sipas ISO: 1 = e hënë ... 7 = e diel. */
+export function isoDayShort(isoDay: number, locale: 'sq' | 'de' | 'en'): string {
+  return DAY_NAMES[locale][isoDay % 7];
+}
+
 /** "Hën 26.10." sipas gjuhës; Intl nuk e ka shqipen në çdo pajisje, prandaj emrat janë këtu. */
-export function formatDay(iso: string, locale: 'sq' | 'de'): string {
+export function formatDay(iso: string, locale: 'sq' | 'de' | 'en'): string {
   const { date, day, month } = berlinParts(iso);
   const dd = String(day).padStart(2, '0');
   const mm = String(month).padStart(2, '0');

@@ -3,7 +3,6 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -11,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useI18n } from '../src/i18n';
+import { LOCALES, useI18n } from '../src/i18n';
 import { configured } from '../src/lib/config';
 import { useSession } from '../src/state/session';
 import { Logo } from '../src/ui/Logo';
@@ -42,7 +41,7 @@ export default function Login() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.body}>
+      <KeyboardAvoidingView behavior="padding" style={styles.body}>
         <Logo height={130} />
         <Text style={styles.brand}>{t('appName')}</Text>
         <Text style={styles.title}>{t('loginTitle')}</Text>
@@ -85,9 +84,9 @@ export default function Login() {
         </Pressable>
 
         <View style={styles.langRow}>
-          {(['sq', 'de'] as const).map((l) => (
+          {LOCALES.map((l) => (
             <Pressable key={l} onPress={() => setLocale(l)} style={[styles.lang, locale === l && styles.langActive]}>
-              <Text style={[styles.langText, locale === l && styles.langTextActive]}>{l.toUpperCase()}</Text>
+              <Text style={[styles.langText, locale === l && styles.langTextActive]}>{l === 'sq' ? 'AL' : l.toUpperCase()}</Text>
             </Pressable>
           ))}
         </View>

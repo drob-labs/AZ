@@ -96,6 +96,7 @@ export function calculateMonth(
   let grossCents = 0;
   let belowMinWageFlagged = false;
   let noRateFlagged = false;
+  const overtimeByDate: Record<string, number> = {};
 
   for (const date of [...minutesByDate.keys()].sort()) {
     const worked = minutesByDate.get(date) ?? 0;
@@ -115,6 +116,7 @@ export function calculateMonth(
 
     workedMin += worked;
     overtimeMin += dayOvertime;
+    overtimeByDate[date] = dayOvertime;
 
     const rate = rateOn(rates, date);
     if (rate === null) {
@@ -138,6 +140,7 @@ export function calculateMonth(
     overtimeMin,
     grossCents,
     days: allDays.filter((d) => inMonth(d.date)),
+    overtimeByDate,
     warnings,
   };
 }

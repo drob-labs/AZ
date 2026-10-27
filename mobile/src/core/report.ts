@@ -1,5 +1,6 @@
-import { berlinHhmm, berlinParts } from './berlin';
+import { berlinHhmm, berlinParts, weekday } from './berlin';
 import { calculateMonth, rateOn } from './hours';
+import { LOGO_DATA_URI } from './logoData';
 import type { Rate, Settings, Shift, WarningCode } from './types';
 
 export interface ReportEmployee {
@@ -35,6 +36,8 @@ export interface ReportDay {
 export interface ReportLine {
   personnelNo: string;
   name: string;
+  firstName: string;
+  lastName: string;
   workedMin: number;
   overtimeMin: number;
   breakMin: number;
@@ -42,6 +45,8 @@ export interface ReportLine {
   grossCents: number;
   warnings: WarningCode[];
   days: ReportDay[];
+  /** Orët shtesë për çdo datë (YYYY-MM-DD → minuta), për fletën e orëve. */
+  overtimeByDate: Record<string, number>;
 }
 
 export interface Report {
@@ -85,6 +90,8 @@ export function buildReport(input: ReportInput): Report {
     return {
       personnelNo: e.personnelNo,
       name: `${e.lastName}, ${e.firstName}`,
+      firstName: e.firstName,
+      lastName: e.lastName,
       workedMin: r.workedMin,
       overtimeMin: r.overtimeMin,
       breakMin: days.reduce((sum, d) => sum + d.breakMin, 0),
@@ -92,6 +99,7 @@ export function buildReport(input: ReportInput): Report {
       grossCents: r.grossCents,
       warnings: [...new Set(r.warnings.map((w) => w.code))],
       days,
+      overtimeByDate: r.overtimeByDate,
     };
   });
 
@@ -123,7 +131,7 @@ export const euros = (cents: number): number => cents / 100;
 
 const OHNE_BAUSTELLE = 'ohne Baustelle';
 
-const germanDate = (iso: string): string => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
+export const germanDate = (iso: string): string => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
 
 const WARNING_DE: Record<WarningCode, string> = {
   OPEN_SHIFT: 'Offene Schicht',
@@ -139,7 +147,7 @@ const WARNING_DE: Record<WarningCode, string> = {
 /** Rreshtat e Excel-it: dy fletë, me numra të vërtetë që mblidhen në Excel. */
 export function excelSheets(report: Report): { name: string; rows: (string | number)[][] }[] {
   const summary: (string | number)[][] = [
-    ['Personal-Nr.', 'Name', 'Arbeitszeit (Std.)', 'davon Überstunden (Std.)', 'Pausen (Std.)', 'Stundenlohn (€)', 'Brutto (€)', 'Hinweise'],
+    ['Benutzername', 'Name', 'Arbeitszeit (Std.)', 'davon Überstunden (Std.)', 'Pausen (Std.)', 'Stundenlohn (€)', 'Brutto (€)', 'Hinweise'],
     ...report.lines.map((l) => [
       l.personnelNo,
       l.name,
@@ -163,7 +171,7 @@ export function excelSheets(report: Report): { name: string; rows: (string | num
   ];
 
   const detail: (string | number)[][] = [
-    ['Personal-Nr.', 'Name', 'Datum', 'Baustelle', 'Beginn', 'Ende', 'Pause (Min.)', 'Arbeitszeit (Std.)'],
+    ['Benutzername', 'Name', 'Datum', 'Baustelle', 'Beginn', 'Ende', 'Pause (Min.)', 'Arbeitszeit (Std.)'],
     ...report.lines.flatMap((l) =>
       l.days.map((d) => [
         l.personnelNo,
@@ -191,76 +199,130 @@ export function excelSheets(report: Report): { name: string; rows: (string | num
   ];
 }
 
-const esc = (s: string): string =>
+export const esc = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const fmtH = (min: number): string => hoursDecimal(min).toFixed(2).replace('.', ',');
 const fmtEur = (cents: number): string =>
   (cents / 100).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const WEEKDAYS_DE = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 const MONTHS_DE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 
 export function monthTitleDe(month: string): string {
   return `${MONTHS_DE[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`;
 }
 
-/** HTML për PDF (expo-print) ose shtypje. Gjermanisht, sepse e lexon Steuerberater-i. */
+/** HTML për PDF (expo-print) ose shtypje. Gjermanisht, sepse e lexon Steuerberater-i. Stil zyrtar, me logon e AZ. */
 export function reportHtml(report: Report): string {
+  const withHours = report.lines.filter((l) => l.workedMin > 0).length;
+  const totalMin = report.totals.workedMin;
+
   const rows = report.lines
     .map(
       (l) => `<tr>
 <td>${esc(l.personnelNo)}</td><td>${esc(l.name)}</td>
-<td class="n">${fmtH(l.workedMin)}</td><td class="n">${fmtH(l.overtimeMin)}</td>
+<td class="n">${fmtH(l.workedMin)}</td><td class="n">${l.overtimeMin > 0 ? fmtH(l.overtimeMin) : '–'}</td>
 <td class="n">${l.hourlyRateCents === null ? '–' : fmtEur(l.hourlyRateCents)}</td>
 <td class="n">${fmtEur(l.grossCents)}</td>
-<td class="w">${esc(l.warnings.map((w) => WARNING_DE[w]).join('; '))}</td></tr>`,
+<td class="hint">${esc(l.warnings.map((w) => WARNING_DE[w]).join('; '))}</td></tr>`,
+    )
+    .join('\n');
+
+  const sites = report.siteTotals
+    .map(
+      (s) => `<tr><td>${esc(s.site || OHNE_BAUSTELLE)}</td>
+<td class="n">${totalMin > 0 ? Math.round((s.workedMin / totalMin) * 1000) / 10 : 0}</td>
+<td class="n">${fmtH(s.workedMin)}</td></tr>`,
     )
     .join('\n');
 
   const details = report.lines
     .filter((l) => l.days.length > 0)
     .map(
-      (l) => `<h2>${esc(l.name)} (${esc(l.personnelNo)})</h2>
-<table class="d"><thead><tr><th>Datum</th><th>Baustelle</th><th>Beginn</th><th>Ende</th><th class="n">Pause (Min.)</th><th class="n">Arbeitszeit (Std.)</th></tr></thead><tbody>
+      (l) => `<section class="emp">
+<div class="emphead"><b>${esc(l.name)}</b><span>Benutzername: ${esc(l.personnelNo)}</span>
+<span class="sum">Arbeitszeit ${fmtH(l.workedMin)} Std. · davon Überstunden ${fmtH(l.overtimeMin)} Std. · Brutto ${fmtEur(l.grossCents)} €</span></div>
+<table class="d"><thead><tr><th>Datum</th><th>Baustelle</th><th class="c">Beginn</th><th class="c">Ende</th><th class="n">Pause (Min.)</th><th class="n">Arbeitszeit (Std.)</th></tr></thead><tbody>
 ${l.days
   .map(
     (d) =>
-      `<tr><td>${germanDate(d.date)}</td><td>${esc(d.site || OHNE_BAUSTELLE)}</td><td>${d.start}</td><td>${d.end}</td><td class="n">${d.breakMin}</td><td class="n">${fmtH(d.workedMin)}</td></tr>`,
+      `<tr><td>${WEEKDAYS_DE[weekday(d.date)]}, ${germanDate(d.date)}</td><td>${esc(d.site || OHNE_BAUSTELLE)}</td><td class="c">${d.start}</td><td class="c">${d.end}</td><td class="n">${d.breakMin}</td><td class="n">${fmtH(d.workedMin)}</td></tr>`,
   )
   .join('\n')}
-</tbody></table>`,
+</tbody></table></section>`,
     )
     .join('\n');
 
   return `<!doctype html>
 <html lang="de"><head><meta charset="utf-8"><title>Stundenabrechnung ${esc(monthTitleDe(report.month))}</title>
 <style>
-  @page { size: A4; margin: 16mm; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #111; }
-  h1 { font-size: 16pt; margin: 0 0 4px; }
-  h2 { font-size: 11pt; margin: 18px 0 6px; page-break-after: avoid; }
-  .meta { color: #555; margin-bottom: 14px; }
+  :root { --ink: #111; --rule: #222; --grid: #8a8f8c; --head: #E7EAE8; --green: #2C7A5A; --muted: #4a524e; }
+  @page { size: A4; margin: 14mm 15mm; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 9pt; color: var(--ink); margin: 0; line-height: 1.35; }
+  @media screen { body { max-width: 180mm; margin: 0 auto; padding: 8mm 0; } }
+  .top { display: flex; align-items: flex-end; justify-content: space-between; padding-bottom: 8px; border-bottom: 1.5px solid var(--rule); }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand img { height: 15mm; }
+  .brand .co { font-family: Georgia, 'Times New Roman', serif; font-weight: bold; font-size: 11.5pt; }
+  .brand .co small { display: block; font-family: Arial, sans-serif; font-weight: normal; font-size: 8pt; color: var(--muted); margin-top: 1px; }
+  .title { text-align: right; }
+  .title h1 { margin: 0; font-size: 15pt; text-transform: uppercase; letter-spacing: 1.2px; }
+  .title div { margin-top: 2px; color: var(--muted); font-size: 9pt; }
+  .accent { height: 3px; background: var(--green); margin-top: 2px; }
+  table.meta { margin: 12px 0 4px; }
+  table.meta td { border: 0.5px solid var(--grid); padding: 4px 8px; }
+  table.meta td.k { width: 34mm; background: var(--head); font-size: 7.5pt; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+  h2 { font-size: 10pt; margin: 16px 0 5px; padding-bottom: 2px; border-bottom: 0.75px solid var(--rule); page-break-after: avoid; }
   table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid #bbb; padding: 4px 6px; text-align: left; }
-  th { background: #eee; }
-  .n { text-align: right; font-variant-numeric: tabular-nums; }
-  .w { color: #92400e; font-size: 9pt; }
-  tfoot td { font-weight: bold; background: #f6f6f6; }
-  .note { margin-top: 12px; color: #555; font-size: 9pt; }
+  th, td { border: 0.5px solid var(--grid); padding: 3.5px 6px; text-align: left; vertical-align: top; }
+  thead th { background: var(--head); font-size: 7.5pt; text-transform: uppercase; letter-spacing: .4px; font-weight: bold; vertical-align: bottom; }
+  tfoot td { background: var(--head); font-weight: bold; border-top: 1.5px solid var(--rule); }
+  .n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .c { text-align: center; font-variant-numeric: tabular-nums; }
+  .hint { font-size: 7.5pt; color: var(--muted); }
+  .note { margin: 5px 0 0; color: var(--muted); font-size: 7.5pt; }
+  .details { page-break-before: always; }
+  .emp { margin-bottom: 14px; page-break-inside: avoid; }
+  .emphead { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; padding: 3px 0 4px; }
+  .emphead b { font-size: 10pt; }
+  .emphead span { color: var(--muted); font-size: 8pt; }
+  .emphead .sum { margin-left: auto; color: var(--ink); }
+  table.d th, table.d td { padding: 2.5px 6px; font-size: 8.5pt; }
   tr { page-break-inside: avoid; }
+  .sign { display: flex; gap: 16mm; margin-top: 16mm; page-break-inside: avoid; }
+  .sign div { flex: 1; border-top: 0.75px solid var(--rule); padding-top: 3px; font-size: 7.5pt; color: var(--muted); }
+  .foot { margin-top: 10px; font-size: 7pt; color: var(--muted); }
 </style></head><body>
-<h1>Stundenabrechnung ${esc(monthTitleDe(report.month))}</h1>
-<div class="meta">${esc(report.company)} · erstellt am ${germanDate(report.generatedAt.slice(0, 10))}</div>
-<table><thead><tr><th>Pers.-Nr.</th><th>Name</th><th class="n">Std.</th><th class="n">davon Überstd.</th><th class="n">Stundenlohn (€)</th><th class="n">Brutto (€)</th><th>Hinweise</th></tr></thead>
+<div class="top">
+  <div class="brand"><img src="${LOGO_DATA_URI}" alt="AZ"><div class="co">${esc(report.company)}<small>Ludwigsburg</small></div></div>
+  <div class="title"><h1>Stundenabrechnung</h1><div>Berichtszeitraum: ${esc(monthTitleDe(report.month))}</div></div>
+</div>
+<div class="accent"></div>
+
+<table class="meta">
+  <tr><td class="k">Arbeitgeber</td><td>${esc(report.company)}</td><td class="k">Berichtszeitraum</td><td>${esc(monthTitleDe(report.month))}</td></tr>
+  <tr><td class="k">Erstellt am</td><td>${germanDate(report.generatedAt.slice(0, 10))}</td><td class="k">Mitarbeiter mit Stunden</td><td>${withHours} von ${report.lines.length}</td></tr>
+</table>
+
+<h2>1. Übersicht je Mitarbeiter</h2>
+<table><thead><tr><th>Benutzername</th><th>Name</th><th class="n">Arbeitszeit (Std.)</th><th class="n">davon Überstd.</th><th class="n">Stundenlohn (€)</th><th class="n">Brutto (€)</th><th>Hinweise</th></tr></thead>
 <tbody>
 ${rows}
 </tbody>
 <tfoot><tr><td></td><td>Summe</td><td class="n">${fmtH(report.totals.workedMin)}</td><td class="n">${fmtH(report.totals.overtimeMin)}</td><td></td><td class="n">${fmtEur(report.totals.grossCents)}</td><td></td></tr></tfoot></table>
 <p class="note">Brutto = Stunden × Stundenlohn (Überstunden mit Zuschlag). Ohne Steuern, Sozialabgaben, Zuschläge für Nacht-, Sonn- und Feiertagsarbeit und ohne SOKA-BAU.</p>
-<h2>Stunden je Baustelle</h2>
-<table class="d"><thead><tr><th>Baustelle</th><th class="n">Arbeitszeit (Std.)</th></tr></thead><tbody>
-${report.siteTotals.map((s) => `<tr><td>${esc(s.site || OHNE_BAUSTELLE)}</td><td class="n">${fmtH(s.workedMin)}</td></tr>`).join('\n')}
-</tbody></table>
-${details}
+
+<h2>2. Stunden je Baustelle</h2>
+<table class="d"><thead><tr><th>Baustelle</th><th class="n">Anteil (%)</th><th class="n">Arbeitszeit (Std.)</th></tr></thead><tbody>
+${sites}
+</tbody>
+<tfoot><tr><td>Summe</td><td class="n">${totalMin > 0 ? '100' : '0'}</td><td class="n">${fmtH(totalMin)}</td></tr></tfoot></table>
+
+<div class="sign"><div>Ort, Datum, Unterschrift Geschäftsführung</div><div>Ort, Datum, Unterschrift Steuerberater / Lohnbuchhaltung</div></div>
+<div class="foot">${esc(report.company)} · Stundenabrechnung ${esc(monthTitleDe(report.month))} · erstellt am ${germanDate(report.generatedAt.slice(0, 10))}</div>
+
+${details ? `<div class="details"><h2>3. Einzelnachweise</h2>\n${details}</div>` : ''}
 </body></html>`;
 }

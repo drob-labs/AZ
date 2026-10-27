@@ -1,12 +1,13 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { addDays, berlinParts } from '../../src/core/berlin';
-import { buildReport, excelSheets, reportHtml, type Report, type ReportEmployee } from '../../src/core/report';
+import { buildReport, reportHtml, type Report, type ReportEmployee } from '../../src/core/report';
+import { timesheetHtml } from '../../src/core/timesheet';
 import type { Rate, Settings, Shift } from '../../src/core/types';
 import { useI18n } from '../../src/i18n';
-import { exportPdf, exportXlsx } from '../../src/lib/exportFiles';
+import { exportPdf } from '../../src/lib/exportFiles';
 import { formatDuration } from '../../src/lib/format';
 import { nowIso } from '../../src/lib/id';
 import { supabase } from '../../src/lib/supabase';
@@ -24,6 +25,15 @@ interface ShiftRow {
   sites: { name: string } | null;
   breaks: { started_at: string; ended_at: string | null }[];
 }
+
+/** Punëtor i raportit: id-ja e databazës, të dhënat për llogaritje dhe turnet e hapura të muajit. */
+interface Person {
+  id: string;
+  emp: ReportEmployee;
+  openCount: number;
+}
+
+const monthTitle = (m: string): string => `${m.slice(5, 7)}.${m.slice(0, 4)}`;
 
 function shiftMonth(prefix: string, delta: number): string {
   const [y, m] = prefix.split('-').map(Number);
@@ -58,11 +68,18 @@ export default function MonthReport() {
   const { t } = useI18n();
   const [month, setMonth] = useState(() => berlinParts(nowIso()).date.slice(0, 7));
   const [report, setReport] = useState<Report | null>(null);
-  const [closedAt, setClosedAt] = useState<string | null>(null);
+  const [settingsState, setSettingsState] = useState<Settings | null>(null);
+  const lastSettings = (): Settings =>
+    settingsState ?? { overtimeDailyAfterH: null, overtimeWeeklyAfterH: null, overtimeSurchargePct: 25, minWageCentsByYear: {} };
+  const [people, setPeople] = useState<Person[]>([]);
+  const [closedIds, setClosedIds] = useState<Set<string>>(new Set());
+  const [allClosed, setAllClosed] = useState(false);
   const [noRateNames, setNoRateNames] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<Person | null>(null);
+  const [selected, setSelected] = useState<Person | null>(null);
+  const [includePay, setIncludePay] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -76,10 +93,9 @@ export default function MonthReport() {
         supabase.from('settings').select('*').single(),
         supabase
           .from('month_closings')
-          .select('closed_at')
+          .select('employee_id')
           .eq('year', Number(month.slice(0, 4)))
-          .eq('month', Number(month.slice(5, 7)))
-          .maybeSingle(),
+          .eq('month', Number(month.slice(5, 7))),
         fetchAllShifts(from, to),
       ]);
       const s = settingsRes.data;
@@ -92,7 +108,9 @@ export default function MonthReport() {
         ),
       };
 
-      const employees: ReportEmployee[] = (emps.data ?? []).map((e) => ({
+      const withIds = (emps.data ?? []).map((e) => ({
+        id: e.id as string,
+        emp: {
         personnelNo: e.personnel_no,
         firstName: e.first_name,
         lastName: e.last_name,
@@ -112,11 +130,22 @@ export default function MonthReport() {
               breaks: x.breaks.map((b) => ({ startedAt: b.started_at, endedAt: b.ended_at })),
             }),
           ),
+        } as ReportEmployee,
       }));
+      const employees = withIds.map((w) => w.emp);
 
       const rep = buildReport({ month, company: COMPANY, employees, settings, generatedAt: nowIso() });
       setReport(rep);
-      setClosedAt(closing.data?.closed_at ?? null);
+      setSettingsState(settings);
+      setPeople(
+        withIds.map((w) => ({
+          ...w,
+          openCount: w.emp.shifts.filter((x) => !x.endedAt && berlinParts(x.startedAt).date.startsWith(month)).length,
+        })),
+      );
+      const closings = closing.data ?? [];
+      setAllClosed(closings.some((c) => c.employee_id === null));
+      setClosedIds(new Set(closings.flatMap((c) => (c.employee_id ? [c.employee_id as string] : []))));
       setNoRateNames(rep.lines.filter((l) => l.warnings.includes('NO_RATE')).map((l) => l.name));
     } catch {
       setMessage(t('exportFailed'));
@@ -132,7 +161,14 @@ export default function MonthReport() {
     }, [load]),
   );
 
-  const blocked = useMemo(() => (report?.openShiftCount ?? 0) > 0, [report]);
+  const isClosed = (id: string) => allClosed || closedIds.has(id);
+  const personFor = (personnelNo: string) => people.find((x) => x.emp.personnelNo === personnelNo);
+  // Turnet e hapura që bllokojnë mbylljen (vetëm të punëtorëve që s'janë mbyllur ende).
+  const openBlocking = useMemo(
+    () => people.filter((x) => !(allClosed || closedIds.has(x.id))).reduce((sum, x) => sum + x.openCount, 0),
+    [people, allClosed, closedIds],
+  );
+  const closedCount = people.filter((x) => allClosed || closedIds.has(x.id)).length;
 
   async function run(fn: () => Promise<void>, failMsg: string) {
     setBusy(true);
@@ -146,18 +182,28 @@ export default function MonthReport() {
     }
   }
 
-  const doExcel = () =>
-    report && run(() => exportXlsx(excelSheets(report), `Stunden_${month}.xlsx`), t('exportFailed'));
   const doPdf = () => report && run(() => exportPdf(reportHtml(report), `Stunden_${month}.pdf`), t('exportFailed'));
 
+  const doTimesheet = (person: Person) => {
+    const line = report?.lines.find((l) => l.personnelNo === person.emp.personnelNo);
+    if (!report || !line) return;
+    const safe = (x: string) => x.replace(/[^A-Za-z0-9]+/g, '_');
+    const filename = `Arbeitszeitnachweis_${safe(line.lastName)}_${safe(line.firstName)}_${month}.pdf`;
+    return run(() => exportPdf(timesheetHtml(report, line, { showPay: includePay }), filename), t('exportFailed'));
+  };
+
   async function doClose() {
-    if (!report) return;
-    setConfirming(false);
+    const person = confirming;
+    if (!person) return;
+    setConfirming(null);
+    // Fotografia e ruajtur përmban vetëm këtë punëtor.
+    const own = buildReport({ month, company: COMPANY, employees: [person.emp], settings: lastSettings(), generatedAt: nowIso() });
     await run(async () => {
-      const { error } = await supabase.rpc('close_month', {
+      const { error } = await supabase.rpc('close_employee_month', {
+        p_employee: person.id,
         p_year: Number(month.slice(0, 4)),
         p_month: Number(month.slice(5, 7)),
-        p_snapshot: { shiftCount: report.shiftCount, report },
+        p_snapshot: { shiftCount: own.shiftCount, report: own },
       });
       if (error) {
         setMessage(`${t('closeFailed')} ${error.message}`);
@@ -179,7 +225,9 @@ export default function MonthReport() {
           <Pressable onPress={() => setMonth((m) => shiftMonth(m, 1))} style={styles.arrow} accessibilityLabel="›">
             <Text style={styles.arrowText}>›</Text>
           </Pressable>
-          {closedAt && <Text style={styles.closed}>{t('monthClosed')}</Text>}
+          {people.length > 0 && (
+            <Text style={styles.closed}>{t('closedCount', { n: closedCount, total: people.length })}</Text>
+          )}
         </View>
 
         {loading && <ActivityIndicator />}
@@ -193,25 +241,52 @@ export default function MonthReport() {
                 <Text style={[styles.cNum, styles.thText]}>{t('colHours')}</Text>
                 <Text style={[styles.cNum, styles.thText]}>{t('colOvertime')}</Text>
                 <Text style={[styles.cNum, styles.thText]}>{t('colGross')}</Text>
+                <View style={styles.cAct} />
               </View>
-              {report.lines.map((l) => (
-                <View key={l.personnelNo} style={styles.tr}>
-                  <Text style={styles.cName}>{l.name}</Text>
-                  <Text style={styles.cNum}>{formatDuration(l.workedMin)}</Text>
-                  <Text style={styles.cNum}>{formatDuration(l.overtimeMin)}</Text>
-                  <Text style={styles.cNum}>{(l.grossCents / 100).toFixed(2)} €</Text>
-                </View>
-              ))}
+              {report.lines.map((l) => {
+                const person = personFor(l.personnelNo);
+                const closed = person ? isClosed(person.id) : false;
+                const hasOpen = (person?.openCount ?? 0) > 0;
+                return (
+                  <Pressable
+                    key={l.personnelNo}
+                    style={[styles.tr, styles.trCenter]}
+                    onPress={() => person && setSelected(person)}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.cName}>{l.name}</Text>
+                    <Text style={styles.cNum}>{formatDuration(l.workedMin)}</Text>
+                    <Text style={styles.cNum}>{formatDuration(l.overtimeMin)}</Text>
+                    <Text style={styles.cNum}>{(l.grossCents / 100).toFixed(2)} €</Text>
+                    <View style={styles.cAct}>
+                      {closed ? (
+                        <Text style={styles.lock} accessibilityLabel={t('closedLabel')}>🔒</Text>
+                      ) : person ? (
+                        <Pressable
+                          style={[styles.pill, (busy || hasOpen) && styles.off]}
+                          disabled={busy || hasOpen}
+                          onPress={() => setConfirming(person)}
+                          accessibilityRole="button"
+                        >
+                          <Text style={styles.pillText}>{t('closeEmployee')}</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  </Pressable>
+                );
+              })}
               <View style={[styles.tr, styles.sum]}>
                 <Text style={[styles.cName, styles.bold]}>{t('total')}</Text>
                 <Text style={[styles.cNum, styles.bold]}>{formatDuration(report.totals.workedMin)}</Text>
                 <Text style={[styles.cNum, styles.bold]}>{formatDuration(report.totals.overtimeMin)}</Text>
                 <Text style={[styles.cNum, styles.bold]}>{(report.totals.grossCents / 100).toFixed(2)} €</Text>
+                <View style={styles.cAct} />
               </View>
             </View>
 
             <Text style={styles.note}>{t('grossNote')}</Text>
-            {blocked && <Text style={styles.error}>{t('openShiftsBlock', { n: report.openShiftCount })}</Text>}
+            <Text style={styles.note}>{t('tapRowHint')}</Text>
+            {openBlocking > 0 && <Text style={styles.error}>{t('openShiftsBlock', { n: openBlocking })}</Text>}
             {noRateNames.length > 0 && (
               <Text style={styles.warn}>
                 {t('noRateBlock')} {noRateNames.join(', ')}
@@ -219,34 +294,67 @@ export default function MonthReport() {
             )}
 
             <View style={styles.btnRow}>
-              <Pressable style={[styles.btn, busy && styles.off]} disabled={busy} onPress={doExcel}>
-                <Text style={styles.btnText}>{t('exportExcel')}</Text>
-              </Pressable>
               <Pressable style={[styles.btn, busy && styles.off]} disabled={busy} onPress={doPdf}>
                 <Text style={styles.btnText}>{t('exportPdf')}</Text>
               </Pressable>
             </View>
 
-            {!closedAt && (
-              <Pressable
-                style={[styles.btn, styles.closeBtn, (busy || blocked) && styles.off]}
-                disabled={busy || blocked}
-                onPress={() => setConfirming(true)}
-              >
-                <Text style={styles.btnText}>{t('closeMonth')}</Text>
-              </Pressable>
-            )}
           </>
         )}
       </ScrollView>
 
-      <Modal visible={confirming} transparent animationType="fade" onRequestClose={() => setConfirming(false)}>
+      <Modal visible={selected !== null} transparent animationType="slide" onRequestClose={() => setSelected(null)}>
+        <Pressable style={styles.backdrop} onPress={() => setSelected(null)}>
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            {selected && (
+              <>
+                <Text style={styles.sheetTitle}>
+                  {selected.emp.firstName} {selected.emp.lastName}
+                </Text>
+                <Text style={styles.note}>
+                  {selected.emp.personnelNo} · {monthTitle(month)}
+                </Text>
+                <View style={styles.payRow}>
+                  <Switch value={includePay} onValueChange={setIncludePay} />
+                  <Text style={styles.payText}>{t('includePay')}</Text>
+                </View>
+                <Pressable style={[styles.btn, busy && styles.off]} disabled={busy} onPress={() => doTimesheet(selected)}>
+                  <Text style={styles.btnText}>{t('employeeSheetPdf')}</Text>
+                </Pressable>
+                {isClosed(selected.id) ? (
+                  <Text style={styles.closed}>🔒 {t('closedLabel')}</Text>
+                ) : (
+                  <Pressable
+                    style={[styles.btn, styles.closeBtn, (busy || selected.openCount > 0) && styles.off]}
+                    disabled={busy || selected.openCount > 0}
+                    onPress={() => {
+                      setConfirming(selected);
+                      setSelected(null);
+                    }}
+                  >
+                    <Text style={styles.btnText}>{t('closeMonth')}</Text>
+                  </Pressable>
+                )}
+                <Pressable style={styles.later} onPress={() => setSelected(null)}>
+                  <Text style={styles.laterText}>{t('close')}</Text>
+                </Pressable>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={confirming !== null} transparent animationType="fade" onRequestClose={() => setConfirming(null)}>
         <View style={styles.backdrop}>
           <View style={styles.sheet}>
-            <Text style={styles.sheetTitle}>{t('closeConfirmTitle')}</Text>
-            <Text style={styles.note}>{t('closeConfirmText')}</Text>
+            <Text style={styles.sheetTitle}>
+              {t('closeConfirmEmployeeTitle', { name: confirming ? `${confirming.emp.firstName} ${confirming.emp.lastName}` : '' })}
+            </Text>
+            <Text style={styles.note}>
+              {t('closeConfirmEmployeeText', { name: confirming ? `${confirming.emp.firstName} ${confirming.emp.lastName}` : '' })}
+            </Text>
             <View style={styles.btnRow}>
-              <Pressable style={[styles.btn, { backgroundColor: colors.muted }]} onPress={() => setConfirming(false)}>
+              <Pressable style={[styles.btn, { backgroundColor: colors.muted }]} onPress={() => setConfirming(null)}>
                 <Text style={styles.btnText}>{t('cancel')}</Text>
               </Pressable>
               <Pressable style={[styles.btn, styles.closeBtn]} onPress={doClose}>
@@ -269,13 +377,18 @@ const styles = StyleSheet.create({
   month: { fontSize: 18, fontWeight: '700', color: colors.text },
   closed: { marginLeft: 'auto', fontSize: 14, color: colors.muted },
   table: { backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
+  trCenter: { alignItems: 'center' },
+  cAct: { width: 66, alignItems: 'flex-end' },
+  lock: { fontSize: 16 },
+  pill: { borderWidth: 1, borderColor: colors.stop, borderRadius: 14, paddingVertical: 4, paddingHorizontal: 10 },
+  pillText: { color: colors.stop, fontSize: 13, fontWeight: '700' },
   tr: { flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
   th: { backgroundColor: colors.bg },
   thText: { fontWeight: '700', color: colors.muted, fontSize: 13 },
   sum: { borderBottomWidth: 0, backgroundColor: colors.bg },
   bold: { fontWeight: '700' },
-  cName: { flex: 2, fontSize: 15, color: colors.text },
-  cNum: { flex: 1.2, fontSize: 15, color: colors.text, textAlign: 'right', fontVariant: ['tabular-nums'] },
+  cName: { flex: 2, fontSize: 14, color: colors.text },
+  cNum: { flex: 1.2, fontSize: 14, color: colors.text, textAlign: 'right', fontVariant: ['tabular-nums'] },
   note: { fontSize: 13, color: colors.muted },
   warn: { fontSize: 14, color: colors.warn },
   error: { fontSize: 15, color: colors.stop },
@@ -286,5 +399,9 @@ const styles = StyleSheet.create({
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.card, padding: 24, borderTopLeftRadius: 20, borderTopRightRadius: 20, gap: 12 },
+  payRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  payText: { flex: 1, fontSize: 15, color: colors.text },
+  later: { padding: 10, alignItems: 'center' },
+  laterText: { fontSize: 16, color: colors.muted, fontWeight: '600' },
   sheetTitle: { fontSize: 22, fontWeight: '700', color: colors.text },
 });

@@ -1,10 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { de } from './de';
+import { en } from './en';
 import { sq, type Dict } from './sq';
 
-export type Locale = 'sq' | 'de';
-const dicts: Record<Locale, Dict> = { sq, de };
+export type Locale = 'sq' | 'de' | 'en';
+export const LOCALES: readonly Locale[] = ['sq', 'de', 'en'];
+const dicts: Record<Locale, Dict> = { sq, de, en };
 const KEY = 'az.locale';
 
 interface I18n {
@@ -20,7 +22,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     AsyncStorage.getItem(KEY).then((v) => {
-      if (v === 'sq' || v === 'de') setLocaleState(v);
+      if (v === 'sq' || v === 'de' || v === 'en') setLocaleState(v);
     });
   }, []);
 

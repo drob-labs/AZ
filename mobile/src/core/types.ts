@@ -61,5 +61,7 @@ export interface MonthResult {
   overtimeMin: number;
   grossCents: number;
   days: DayResult[];
+  /** Orët shtesë për çdo datë të muajit (YYYY-MM-DD → minuta). */
+  overtimeByDate: Record<string, number>;
   warnings: Warning[];
 }

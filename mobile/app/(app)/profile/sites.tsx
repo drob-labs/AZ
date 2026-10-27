@@ -3,44 +3,50 @@ import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Modal,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useI18n } from '../../src/i18n';
-import { supabase } from '../../src/lib/supabase';
-import { colors } from '../../src/ui/theme';
+import { formatAddress, isValidPostalCode, parseAddress } from '../../../src/core/address';
+import { useI18n } from '../../../src/i18n';
+import { pickSiteImage, removeSiteImage, sitePhotoUrl, uploadSiteImage } from '../../../src/lib/sitePhoto';
+import { supabase } from '../../../src/lib/supabase';
+import { KeyboardBackdrop } from '../../../src/ui/KeyboardBackdrop';
+import { colors } from '../../../src/ui/theme';
 
 interface SiteRow {
   id: string;
   name: string;
   address: string | null;
+  street: string | null;
+  postal_code: string | null;
+  city: string | null;
   active: boolean;
+  photo_path: string | null;
 }
 
 export default function Sites() {
   const { t } = useI18n();
   const [rows, setRows] = useState<SiteRow[]>([]);
-  const [requireSite, setRequireSite] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState<SiteRow | 'new' | null>(null);
   const [filter, setFilter] = useState<'active' | 'done'>('active');
 
   const load = useCallback(async () => {
     setRefreshing(true);
-    const [sites, settings] = await Promise.all([
-      supabase.from('sites').select('id, name, address, active').order('active', { ascending: false }).order('name'),
-      supabase.from('settings').select('require_site').single(),
-    ]);
+    const sites = await supabase
+      .from('sites')
+      .select('id, name, address, street, postal_code, city, active, photo_path')
+      .order('active', { ascending: false })
+      .order('name');
     setRows((sites.data ?? []) as SiteRow[]);
-    setRequireSite(settings.data?.require_site ?? false);
     setRefreshing(false);
   }, []);
 
@@ -50,12 +56,6 @@ export default function Sites() {
     }, [load]),
   );
 
-  async function toggleRequire(value: boolean) {
-    setRequireSite(value);
-    const { error } = await supabase.from('settings').update({ require_site: value }).eq('id', true);
-    if (error) setRequireSite(!value);
-  }
-
   return (
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <View style={styles.head}>
@@ -63,10 +63,6 @@ export default function Sites() {
         <Pressable style={styles.addBtn} onPress={() => setEditing('new')} accessibilityRole="button">
           <Text style={styles.addText}>＋ {t('addSite')}</Text>
         </Pressable>
-        <View style={styles.switchRow}>
-          <Switch value={requireSite} onValueChange={toggleRequire} />
-          <Text style={styles.switchText}>{t('requireSiteLabel')}</Text>
-        </View>
       </View>
 
       <View style={styles.tabs}>
@@ -90,6 +86,7 @@ export default function Sites() {
         contentContainerStyle={{ padding: 16, gap: 10 }}
         renderItem={({ item }) => (
           <Pressable style={styles.row} onPress={() => setEditing(item)}>
+            {item.photo_path ? <Image source={{ uri: sitePhotoUrl(item.photo_path)! }} style={styles.thumb} /> : null}
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{item.name}</Text>
               {item.address ? <Text style={styles.sub}>{item.address}</Text> : null}
@@ -118,36 +115,120 @@ export default function Sites() {
 function SiteModal({ site, onClose, onSaved }: { site: SiteRow | null; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
   const [name, setName] = useState(site?.name ?? '');
-  const [address, setAddress] = useState(site?.address ?? '');
+  // Baustelle të vjetra pa pjesë të ruajtura: ndaje adresën e shkruar lirisht që fushat të dalin të plotësuara.
+  const initial = site?.street || site?.postal_code || site?.city
+    ? { street: site.street ?? '', postalCode: site.postal_code ?? '', city: site.city ?? '' }
+    : parseAddress(site?.address);
+  const [street, setStreet] = useState(initial.street);
+  const [postalCode, setPostalCode] = useState(initial.postalCode);
+  const [city, setCity] = useState(initial.city);
   const [active, setActive] = useState(site?.active ?? true);
+  // Foto e re mbahet vetëm në telefon deri te "Ruaj", që anulimi të mos lërë skedarë të panevojshëm në storage.
+  const [newPhotoUri, setNewPhotoUri] = useState<string | null>(null);
+  const [photoRemoved, setPhotoRemoved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const previewUri = newPhotoUri ?? (photoRemoved ? null : sitePhotoUrl(site?.photo_path));
+
+  async function choosePhoto() {
+    setError(null);
+    const res = await pickSiteImage();
+    if (res.status === 'ok') {
+      setNewPhotoUri(res.uri);
+      setPhotoRemoved(false);
+    } else if (res.status === 'denied') setError(t('photoDenied'));
+    else if (res.status === 'error') setError(t('photoError'));
+  }
 
   async function save() {
     setError(null);
     if (!name.trim()) return setError(t('fillAll'));
+    if (!isValidPostalCode(postalCode)) return setError(t('sitePostalInvalid'));
     setBusy(true);
-    const values = { name: name.trim(), address: address.trim() || null, active };
+    let photoPath = site?.photo_path ?? null;
+    if (newPhotoUri) {
+      const uploaded = await uploadSiteImage(newPhotoUri);
+      if (!uploaded) {
+        setBusy(false);
+        return setError(t('photoError'));
+      }
+      photoPath = uploaded;
+    } else if (photoRemoved) {
+      photoPath = null;
+    }
+    const values = {
+      name: name.trim(),
+      address: formatAddress({ street, postalCode, city }) || null,
+      street: street.trim() || null,
+      postal_code: postalCode || null,
+      city: city.trim() || null,
+      active,
+      photo_path: photoPath,
+    };
     const { error: err } = site
       ? await supabase.from('sites').update(values).eq('id', site.id)
       : await supabase.from('sites').insert(values);
+    if (err) {
+      if (newPhotoUri) await removeSiteImage(photoPath);
+      setBusy(false);
+      return setError(t('genericFail'));
+    }
+    // Fshij foton e vjetër që storage të mos mbushet.
+    if (site?.photo_path && site.photo_path !== photoPath) await removeSiteImage(site.photo_path);
     setBusy(false);
-    if (err) return setError(t('genericFail'));
     onSaved();
   }
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+    <Modal visible transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
+      <KeyboardBackdrop style={styles.backdrop}>
         <View style={styles.sheet}>
           <ScrollView contentContainerStyle={{ gap: 10 }} keyboardShouldPersistTaps="handled">
             <Text style={styles.sheetTitle}>{site ? site.name : t('addSite')}</Text>
 
+            <Text style={styles.label}>{t('sitePhoto')}</Text>
+            {previewUri ? <Image source={{ uri: previewUri }} style={styles.preview} /> : null}
+            <View style={styles.btnRow}>
+              <Pressable style={styles.photoBtn} onPress={choosePhoto} accessibilityRole="button">
+                <Text style={styles.photoBtnText}>{previewUri ? t('sitePhotoChange') : t('sitePhotoChoose')}</Text>
+              </Pressable>
+              {previewUri ? (
+                <Pressable
+                  style={styles.photoBtn}
+                  onPress={() => {
+                    setNewPhotoUri(null);
+                    setPhotoRemoved(true);
+                  }}
+                  accessibilityRole="button"
+                >
+                  <Text style={[styles.photoBtnText, { color: colors.muted }]}>{t('sitePhotoRemove')}</Text>
+                </Pressable>
+              ) : null}
+            </View>
+
             <Text style={styles.label}>{t('siteName')}</Text>
             <TextInput style={styles.input} value={name} onChangeText={setName} />
 
-            <Text style={styles.label}>{t('siteAddress')}</Text>
-            <TextInput style={styles.input} value={address} onChangeText={setAddress} />
+            <Text style={styles.label}>{t('siteStreet')}</Text>
+            <TextInput style={styles.input} value={street} onChangeText={setStreet} autoCapitalize="words" />
+
+            <View style={styles.cityRow}>
+              <View style={{ flex: 1, gap: 10 }}>
+                <Text style={styles.label}>{t('sitePostal')}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={postalCode}
+                  onChangeText={(v) => setPostalCode(v.replace(/D/g, '').slice(0, 5))}
+                  keyboardType="number-pad"
+                  maxLength={5}
+                />
+              </View>
+              <View style={{ flex: 2, gap: 10 }}>
+                <Text style={styles.label}>{t('siteCity')}</Text>
+                <TextInput style={styles.input} value={city} onChangeText={setCity} autoCapitalize="words" />
+              </View>
+            </View>
 
             <Text style={styles.label}>{t('siteStatus')}</Text>
             <View style={styles.seg}>
@@ -170,7 +251,7 @@ function SiteModal({ site, onClose, onSaved }: { site: SiteRow | null; onClose: 
             </View>
           </ScrollView>
         </View>
-      </View>
+      </KeyboardBackdrop>
     </Modal>
   );
 }
@@ -181,8 +262,6 @@ const styles = StyleSheet.create({
   title: { fontSize: 26, fontWeight: '700', color: colors.text },
   addBtn: { backgroundColor: colors.primary, borderRadius: 12, padding: 14, alignItems: 'center' },
   addText: { color: '#fff', fontSize: 17, fontWeight: '700' },
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  switchText: { flex: 1, fontSize: 15, color: colors.text },
   tabs: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
   tab: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
   tabOn: { backgroundColor: colors.text, borderColor: colors.text },
@@ -197,6 +276,11 @@ const styles = StyleSheet.create({
   hint: { fontSize: 13, color: colors.muted },
   empty: { textAlign: 'center', color: colors.muted, marginTop: 40, fontSize: 16, paddingHorizontal: 24 },
   row: { backgroundColor: colors.card, borderRadius: 12, padding: 16, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+  cityRow: { flexDirection: 'row', gap: 10 },
+  thumb: { width: 64, height: 40, borderRadius: 8, marginRight: 12, backgroundColor: colors.primarySoft },
+  preview: { width: '100%', aspectRatio: 1.6, borderRadius: 12, backgroundColor: colors.primarySoft },
+  photoBtn: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg },
+  photoBtnText: { fontSize: 15, fontWeight: '600', color: colors.primary },
   name: { fontSize: 18, fontWeight: '700', color: colors.text },
   sub: { fontSize: 14, color: colors.muted, marginTop: 2 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },

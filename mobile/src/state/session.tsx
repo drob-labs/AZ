@@ -10,7 +10,7 @@ export interface Employee {
   first_name: string;
   last_name: string;
   role: 'worker' | 'admin';
-  locale: 'sq' | 'de';
+  locale: 'sq' | 'de' | 'en';
   avatar_path: string | null;
 }
 

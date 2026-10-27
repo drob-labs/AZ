@@ -22,6 +22,7 @@ import type { Dict } from '../../src/i18n/sq';
 import { workerEmail } from '../../src/lib/config';
 import { nowIso } from '../../src/lib/id';
 import { supabase } from '../../src/lib/supabase';
+import { KeyboardBackdrop } from '../../src/ui/KeyboardBackdrop';
 import { colors } from '../../src/ui/theme';
 
 interface Emp {
@@ -61,6 +62,7 @@ export default function Staff() {
   const [refreshing, setRefreshing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<Emp | null>(null);
+  const [filter, setFilter] = useState<'active' | 'inactive'>('active');
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -99,8 +101,21 @@ export default function Staff() {
         </Pressable>
       </View>
 
+      <View style={styles.tabs}>
+        {(['active', 'inactive'] as const).map((f) => {
+          const count = rows.filter((r) => r.active === (f === 'active')).length;
+          return (
+            <Pressable key={f} onPress={() => setFilter(f)} style={[styles.tab, filter === f && styles.tabOn]}>
+              <Text style={[styles.tabText, filter === f && { color: '#fff' }]}>
+                {f === 'active' ? t('staffActiveTab') : t('staffInactiveTab')} ({count})
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
       <FlatList
-        data={rows}
+        data={rows.filter((r) => r.active === (filter === 'active'))}
         keyExtractor={(e) => e.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} />}
         ListEmptyComponent={<Text style={styles.empty}>{t('noEmployees')}</Text>}
@@ -112,7 +127,7 @@ export default function Staff() {
                 {item.first_name} {item.last_name}
               </Text>
               <Text style={styles.sub}>
-                #{item.personnel_no}
+                @{item.personnel_no}
                 {item.active ? '' : ` · ${t('inactive')}`}
               </Text>
             </View>
@@ -190,7 +205,8 @@ function AddModal({ minWage, onClose, onDone }: { minWage: number | null; onClos
         pin,
         hourlyRateCents: rateCents,
         weeklyHours: parseFloat(hours.replace(',', '.')) || 40,
-        locale,
+        // Kolona employees.locale pranon vetëm sq/de.
+        locale: locale === 'en' ? 'de' : locale,
         validFrom: today(),
       },
     });
@@ -201,8 +217,8 @@ function AddModal({ minWage, onClose, onDone }: { minWage: number | null; onClos
   }
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+    <Modal visible transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
+      <KeyboardBackdrop style={styles.backdrop}>
         <View style={styles.sheet}>
           {created ? (
             <View style={{ gap: 12 }}>
@@ -232,7 +248,7 @@ function AddModal({ minWage, onClose, onDone }: { minWage: number | null; onClos
                 <TextInput
                   style={styles.input}
                   value={no}
-                  onChangeText={(v) => setNo(v.replace(/[^A-Za-z0-9]/g, '').slice(0, 12))}
+                  onChangeText={(v) => setNo(v.replace(/[^A-Za-z0-9]/g, '').toLowerCase())}
                   autoCapitalize="none"
                 />
               </Field>
@@ -270,7 +286,7 @@ function AddModal({ minWage, onClose, onDone }: { minWage: number | null; onClos
             </ScrollView>
           )}
         </View>
-      </View>
+      </KeyboardBackdrop>
     </Modal>
   );
 }
@@ -335,15 +351,15 @@ function DetailModal({
   }
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+    <Modal visible transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
+      <KeyboardBackdrop style={styles.backdrop}>
         <View style={styles.sheet}>
           <ScrollView contentContainerStyle={{ gap: 10 }} keyboardShouldPersistTaps="handled">
             <Text style={styles.sheetTitle}>
               {emp.first_name} {emp.last_name}
             </Text>
             <Text style={styles.sub}>
-              #{emp.personnel_no} · {t('currentRate')}: {euro(rate)}
+              @{emp.personnel_no} · {t('currentRate')}: {euro(rate)}
             </Text>
 
             <Field label={t('newRate')}>
@@ -387,7 +403,7 @@ function DetailModal({
             </Pressable>
           </ScrollView>
         </View>
-      </View>
+      </KeyboardBackdrop>
     </Modal>
   );
 }
@@ -398,6 +414,10 @@ const styles = StyleSheet.create({
   title: { fontSize: 26, fontWeight: '700', color: colors.text },
   addBtn: { backgroundColor: colors.primary, borderRadius: 12, padding: 14, alignItems: 'center' },
   addText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  tabs: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
+  tab: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  tabOn: { backgroundColor: colors.text, borderColor: colors.text },
+  tabText: { fontSize: 15, fontWeight: '600', color: colors.text },
   empty: { textAlign: 'center', color: colors.muted, marginTop: 40, fontSize: 16 },
   row: { backgroundColor: colors.card, borderRadius: 12, padding: 16, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border },
   name: { fontSize: 18, fontWeight: '700', color: colors.text },
