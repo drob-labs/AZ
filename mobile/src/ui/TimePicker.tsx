@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View, type ScrollViewInstance } from 'react-native';
 import { colors } from './theme';
 
 interface Props {
@@ -47,8 +47,14 @@ export function TimePicker({ value, onChange, label, doneLabel }: Props) {
 
 function Column({ items, selected, onPick }: { items: string[]; selected: string; onPick: (v: string) => void }) {
   const index = Math.max(0, items.indexOf(selected));
+  const ref = useRef<ScrollViewInstance>(null);
+  // contentOffset nuk punon në web, prandaj e çojmë listën te vlera e zgjedhur pas hapjes.
+  useEffect(() => {
+    ref.current?.scrollTo({ y: Math.max(0, index - 2) * ROW_H, animated: false });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <ScrollView
+      ref={ref}
       style={styles.col}
       contentOffset={{ x: 0, y: Math.max(0, index - 2) * ROW_H }}
       showsVerticalScrollIndicator={false}
@@ -71,7 +77,7 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   sheet: { backgroundColor: colors.card, borderRadius: 20, padding: 16, width: 260, gap: 12 },
   cols: { flexDirection: 'row', alignItems: 'center', height: ROW_H * 5, gap: 4 },
-  col: { flex: 1 },
+  col: { flex: 1, height: ROW_H * 5 },
   colon: { fontSize: 24, fontWeight: '700', color: colors.text },
   item: { height: ROW_H - 6, marginVertical: 3, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   itemOn: { backgroundColor: colors.primary },

@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "AZ Zeiterfassung",
-    "slug": "az-zeiterfassung",
+    "slug": "drob-labs",
     "scheme": "azzeit",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -49,6 +49,17 @@
       ],
       "expo-sharing",
       "@react-native-community/datetimepicker"
-    ]
+    ],
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "4740579d-36a0-4f7c-9ad7-a003d251dfaa"
+      }
+    },
+    "owner": "drob-labs-team"
   }
 }
