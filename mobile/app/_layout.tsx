@@ -19,6 +19,7 @@ export default function RootLayout() {
             >
               <Stack.Screen name="index" options={{ animation: 'none' }} />
               <Stack.Screen name="login" options={{ animation: 'fade' }} />
+              <Stack.Screen name="info" options={{ animation: 'slide_from_bottom' }} />
               <Stack.Screen name="(app)" options={{ animation: 'fade' }} />
             </Stack>
           </ChatProvider>

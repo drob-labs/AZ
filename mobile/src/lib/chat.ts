@@ -75,6 +75,22 @@ export async function openDm(otherId: string): Promise<string> {
   return data as string;
 }
 
+export async function fetchBlocked(): Promise<string[]> {
+  const { data, error } = await supabase.from('chat_blocks').select('blocked_id');
+  if (error) throw error;
+  return (data ?? []).map((r: { blocked_id: string }) => r.blocked_id);
+}
+
+export async function blockUser(myId: string, otherId: string): Promise<void> {
+  const { error } = await supabase.from('chat_blocks').upsert({ blocker_id: myId, blocked_id: otherId });
+  if (error) throw error;
+}
+
+export async function reportMessage(messageId: string): Promise<void> {
+  const { error } = await supabase.rpc('report_message', { p_message: messageId, p_reason: null });
+  if (error) throw error;
+}
+
 export async function markRead(roomId: string): Promise<void> {
   await supabase.rpc('chat_mark_read', { p_room: roomId });
 }

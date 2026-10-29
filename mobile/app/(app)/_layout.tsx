@@ -17,7 +17,7 @@ const tabIcon = (name: IconName) =>
 export default function AppLayout() {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
-  const { loading, session, employee } = useSession();
+  const { loading, session, employee, demo } = useSession();
   const router = useRouter();
   // Brenda chat-it rrëshqitja majtas nuk hap chat-in përsëri (aty rrëshqitja djathtas kthen mbrapa).
   const inChat = useRef(false);
@@ -35,7 +35,7 @@ export default function AppLayout() {
     [router],
   );
 
-  if (!loading && (!session || !employee)) return <Redirect href="/login" />;
+  if (!loading && ((!session && !demo) || !employee)) return <Redirect href="/login" />;
 
   // Pronari sheh ekranet e zyrës, punëtori ekranet e veta. Siguria e vërtetë është te RLS në databazë.
   const isAdmin = employee?.role === 'admin';

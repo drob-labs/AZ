@@ -17,7 +17,7 @@ const BREAK_CHOICES = [15, 30, 45, 60];
 
 export default function Today() {
   const { t } = useI18n();
-  const { employee } = useSession();
+  const { employee, demo } = useSession();
   const tr = useTracker();
   const [nowMs, setNowMs] = useState(Date.now());
   const [askBreak, setAskBreak] = useState(false);
@@ -33,11 +33,11 @@ export default function Today() {
   const [routineBusy, setRoutineBusy] = useState(false);
 
   const loadRoutine = useCallback(async () => {
-    if (!employee) return;
+    if (!employee || demo) return;
     const [r, a] = await Promise.all([fetchRoutine(employee.id), fetchOpenAutoShift(employee.id)]);
     setRoutine(r);
     setAutoShift(a);
-  }, [employee]);
+  }, [employee, demo]);
 
   useFocusEffect(
     useCallback(() => {

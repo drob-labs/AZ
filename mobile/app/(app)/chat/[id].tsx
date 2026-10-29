@@ -1,10 +1,10 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Image, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { berlinParts } from '../../../src/core/berlin';
 import { buildChatItems, type ChatItem } from '../../../src/core/chatList';
 import { useI18n } from '../../../src/i18n';
-import { fetchMessages, markRead, MAX_LENGTH, PAGE_SIZE, sendMessage, type ChatMessage } from '../../../src/lib/chat';
+import { fetchMessages, markRead, MAX_LENGTH, PAGE_SIZE, reportMessage, sendMessage, type ChatMessage } from '../../../src/lib/chat';
 import { formatTime } from '../../../src/lib/format';
 import { nowIso } from '../../../src/lib/id';
 import { sitePhotoUrl } from '../../../src/lib/sitePhoto';
@@ -24,7 +24,9 @@ export default function ChatRoom() {
   const { t } = useI18n();
   const swipeBack = useSwipeBack();
   const { employee } = useSession();
-  const { overview, people, refresh, subscribe } = useChat();
+  const { overview, people, refresh, subscribe, blocked, block } = useChat();
+  const [actionMsg, setActionMsg] = useState<{ id: string; sender_id: string } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -103,7 +105,23 @@ export default function ChatRoom() {
     setSending(false);
   }
 
-  const items = useMemo(() => buildChatItems(messages, meId, !!isGroup), [messages, meId, isGroup]);
+  const items = useMemo(
+    () => buildChatItems(messages.filter((m) => !blocked.has(m.sender_id)), meId, !!isGroup),
+    [messages, blocked, meId, isGroup],
+  );
+
+  async function act(kind: 'report' | 'block') {
+    const m = actionMsg;
+    setActionMsg(null);
+    if (!m) return;
+    try {
+      if (kind === 'report') await reportMessage(m.id);
+      else await block(m.sender_id);
+      setNotice(t(kind === 'report' ? 'msgReported' : 'msgBlocked'));
+    } catch {
+      setNotice(t('msgFailed'));
+    }
+  }
   const today = berlinParts(nowIso()).date;
 
   const leading = isGroup ? (
@@ -145,10 +163,14 @@ export default function ChatRoom() {
                   <Text style={styles.sender}>{sender ? `${sender.first_name} ${sender.last_name}` : '—'}</Text>
                 ) : null}
                 <View style={[styles.line, item.mine ? styles.lineMine : styles.lineOther, item.continued && { marginTop: 2 }]}>
-                  <View style={[styles.bubble, item.mine ? styles.mine : styles.theirs]}>
+                  <Pressable
+                    onLongPress={() => !item.mine && setActionMsg({ id: item.msg.id, sender_id: item.msg.sender_id })}
+                    delayLongPress={350}
+                    style={[styles.bubble, item.mine ? styles.mine : styles.theirs]}
+                  >
                     <Text style={[styles.body, item.mine && { color: '#fff' }]}>{item.msg.body}</Text>
                     <Text style={[styles.time, item.mine && { color: '#CFE8DA' }]}>{formatTime(item.msg.created_at)}</Text>
-                  </View>
+                  </Pressable>
                 </View>
               </View>
             );
@@ -156,6 +178,7 @@ export default function ChatRoom() {
         />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
+        {notice ? <Text style={styles.notice}>{notice}</Text> : null}
         <View style={[styles.inputBar, { paddingBottom: 8 }]}>
           <TextInput
             style={styles.input}
@@ -185,6 +208,22 @@ export default function ChatRoom() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal visible={!!actionMsg} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setActionMsg(null)}>
+        <Pressable style={styles.backdrop} onPress={() => setActionMsg(null)}>
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            <Pressable style={styles.sheetRow} onPress={() => act('report')} accessibilityRole="button">
+              <Text style={styles.sheetText}>{t('msgReport')}</Text>
+            </Pressable>
+            <Pressable style={styles.sheetRow} onPress={() => act('block')} accessibilityRole="button">
+              <Text style={[styles.sheetText, { color: colors.stop }]}>{t('msgBlock')}</Text>
+            </Pressable>
+            <Pressable style={styles.sheetRow} onPress={() => setActionMsg(null)} accessibilityRole="button">
+              <Text style={styles.sheetText}>{t('cancel')}</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -206,6 +245,11 @@ const styles = StyleSheet.create({
   theirs: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderBottomLeftRadius: 5 },
   body: { fontSize: 16, color: colors.text, lineHeight: 21 },
   time: { fontSize: 10, color: colors.muted, alignSelf: 'flex-end', marginTop: 2 },
+  notice: { color: colors.primary, fontSize: 13, textAlign: 'center', paddingHorizontal: 16, paddingVertical: 4 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: colors.bg, padding: 12, paddingBottom: 30, borderTopLeftRadius: 24, borderTopRightRadius: 24, gap: 8 },
+  sheetRow: { backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 16, alignItems: 'center' },
+  sheetText: { fontSize: 17, fontWeight: '600', color: colors.text },
   error: { color: colors.stop, fontSize: 13, textAlign: 'center', paddingHorizontal: 16, paddingVertical: 4 },
   inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 10, paddingTop: 8, backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border },
   input: { flex: 1, maxHeight: 120, minHeight: 44, borderWidth: 1, borderColor: colors.border, borderRadius: 22, paddingHorizontal: 16, paddingTop: 11, paddingBottom: 11, fontSize: 16, color: colors.text, backgroundColor: colors.bg },

@@ -24,17 +24,17 @@ export default function ChatList() {
   const swipeBack = useSwipeBack();
   const router = useRouter();
   const { employee } = useSession();
-  const { overview, people, refresh } = useChat();
+  const { overview, people, refresh, blocked } = useChat();
   const [refreshing, setRefreshing] = useState(false);
 
   const entries = useMemo<Entry[]>(() => {
     const sites = overview.filter((r) => r.kind === 'site').sort((a, b) => byRecent(a, b) || (a.site_name ?? '').localeCompare(b.site_name ?? '', 'de'));
-    const dms = overview.filter((r) => r.kind === 'dm').sort(byRecent);
+    const dms = overview.filter((r) => r.kind === 'dm' && !(r.other_id && blocked.has(r.other_id))).sort(byRecent);
     const list: Entry[] = [];
     if (sites.length) list.push({ type: 'header', key: 'h-sites', title: t('sitesTitle') }, ...sites.map((room): Entry => ({ type: 'room', key: room.room_id, room })));
     if (dms.length) list.push({ type: 'header', key: 'h-dm', title: t('chatDirect') }, ...dms.map((room): Entry => ({ type: 'room', key: room.room_id, room })));
     return list;
-  }, [overview, t]);
+  }, [overview, blocked, t]);
 
   async function onRefresh() {
     setRefreshing(true);

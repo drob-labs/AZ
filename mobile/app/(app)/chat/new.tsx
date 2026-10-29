@@ -15,7 +15,7 @@ export default function NewChat() {
   const swipeBack = useSwipeBack();
   const router = useRouter();
   const { employee } = useSession();
-  const { people, refresh } = useChat();
+  const { people, refresh, blocked } = useChat();
   const [query, setQuery] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -23,11 +23,11 @@ export default function NewChat() {
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
     return [...people.values()]
-      .filter((p) => p.active && p.id !== employee?.id)
+      .filter((p) => p.active && p.id !== employee?.id && !blocked.has(p.id))
       // Pronari i pari, pastaj sipas mbiemrit.
       .sort((a, b) => (a.role === b.role ? a.last_name.localeCompare(b.last_name, 'de') : a.role === 'admin' ? -1 : 1))
       .filter((p) => !q || `${p.first_name} ${p.last_name}`.toLowerCase().includes(q));
-  }, [people, employee?.id, query]);
+  }, [people, blocked, employee?.id, query]);
 
   async function pick(id: string) {
     if (busyId) return;

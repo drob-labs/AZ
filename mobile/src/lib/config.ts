@@ -9,4 +9,4 @@ export const workerEmail = (personnelNo: string) =>
   `${personnelNo.trim().toLowerCase()}@${WORKER_EMAIL_DOMAIN}`;
 
 export const SUPPORT_EMAIL = 'info@az-innenausbau.de';
-export const PRIVACY_URL = 'https://az-innenausbau.de/datenschutz';
+export const PRIVACY_URL = 'https://az-innenausbau.de/datenschutzerklaerung/';

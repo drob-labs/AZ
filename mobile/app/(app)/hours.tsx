@@ -11,6 +11,7 @@ import { useI18n } from '../../src/i18n';
 import type { Dict } from '../../src/i18n/sq';
 import { formatDay, formatDuration, formatTime } from '../../src/lib/format';
 import { nowIso } from '../../src/lib/id';
+import { demoShifts } from '../../src/lib/demo';
 import { supabase } from '../../src/lib/supabase';
 import { useSession } from '../../src/state/session';
 import { useTracker } from '../../src/state/tracker';
@@ -47,7 +48,7 @@ const fromLocal = (s: LocalShift, siteName: string | null): Shift => ({
 
 export default function Hours() {
   const { t, locale } = useI18n();
-  const { employee } = useSession();
+  const { employee, demo } = useSession();
   const tr = useTracker();
   const [server, setServer] = useState<Shift[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -55,6 +56,10 @@ export default function Hours() {
 
   const load = useCallback(async () => {
     if (!employee) return;
+    if (demo) {
+      setServer(demoShifts(nowIso()));
+      return;
+    }
     setRefreshing(true);
     const from = new Date(Date.parse(`${monthPrefix}-01T00:00:00Z`) - 86400000).toISOString();
     const { data, error } = await supabase
@@ -65,7 +70,7 @@ export default function Hours() {
       .order('started_at', { ascending: false });
     setServer(error ? null : ((data ?? []) as unknown as ServerShift[]).map(fromServer));
     setRefreshing(false);
-  }, [employee, monthPrefix]);
+  }, [employee, demo, monthPrefix]);
 
   useEffect(() => {
     load();

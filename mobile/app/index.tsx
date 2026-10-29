@@ -4,7 +4,7 @@ import { configured } from '../src/lib/config';
 import { useSession } from '../src/state/session';
 
 export default function Index() {
-  const { loading, session, employee } = useSession();
+  const { loading, session, employee, demo } = useSession();
   if (configured && loading) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -12,6 +12,6 @@ export default function Index() {
       </View>
     );
   }
-  if (!session || !employee) return <Redirect href="/login" />;
+  if ((!session && !demo) || !employee) return <Redirect href="/login" />;
   return <Redirect href={employee.role === 'admin' ? '/team' : '/today'} />;
 }

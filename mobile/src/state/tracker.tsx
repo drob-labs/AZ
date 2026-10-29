@@ -25,6 +25,7 @@ import {
 import { newId, nowIso } from '../lib/id';
 import { loadTrackerState, saveTrackerState } from '../lib/storage';
 import { supabase } from '../lib/supabase';
+import { DEMO_SITES } from '../lib/demo';
 import { useSession } from './session';
 
 const SYNC_INTERVAL_MS = 30_000;
@@ -87,7 +88,10 @@ async function push(shift: LocalShift): Promise<PushResult> {
 }
 
 export function TrackerProvider({ children }: { children: ReactNode }) {
-  const { session } = useSession();
+  const { session, demo } = useSession();
+  const demoRef = useRef(demo);
+  demoRef.current = demo;
+  const wasDemo = useRef(false);
   const stateRef = useRef<TrackerState>(emptyState);
   const [state, setState] = useState<TrackerState>(emptyState);
   const [ready, setReady] = useState(false);
@@ -101,6 +105,7 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
     stateRef.current = next;
     setState(next);
     // Shkrimet në disk bëhen me radhë, që të mos ngatërrohen.
+    if (demoRef.current) return;
     writeChain.current = writeChain.current.then(() => saveTrackerState(next)).catch(() => {});
   }, []);
 
@@ -118,8 +123,24 @@ export function TrackerProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // Demo: gjendje e pastër në memorie, pa ruajtje në telefon dhe pa server.
+  useEffect(() => {
+    if (demo) {
+      stateRef.current = emptyState;
+      setState(emptyState);
+      setSites(DEMO_SITES);
+      setSettings(defaultSettings);
+      setReady(true);
+    } else if (wasDemo.current) {
+      setSites([]);
+      stateRef.current = emptyState;
+      setState(emptyState);
+    }
+    wasDemo.current = demo;
+  }, [demo]);
+
   const syncNow = useCallback(async () => {
-    if (syncing.current || !session) return;
+    if (syncing.current || !session || demoRef.current) return;
     if (stateRef.current.outbox.length === 0) {
       setSyncError(null);
       return;

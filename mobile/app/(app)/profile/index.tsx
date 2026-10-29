@@ -5,6 +5,7 @@ import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, T
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LOCALES, useI18n, type Locale } from '../../../src/i18n';
 import { pickAndUploadAvatar, removeAvatar } from '../../../src/lib/avatar';
+import { supabase } from '../../../src/lib/supabase';
 import { PRIVACY_URL, SUPPORT_EMAIL } from '../../../src/lib/config';
 import { useSession } from '../../../src/state/session';
 import { useTracker } from '../../../src/state/tracker';
@@ -18,13 +19,15 @@ const LANGUAGE_NAMES: Record<Locale, string> = { sq: 'Shqip', de: 'Deutsch', en:
 
 export default function Profile() {
   const { t, locale, setLocale } = useI18n();
-  const { employee, signOut, refreshEmployee } = useSession();
+  const { employee, demo, signOut, refreshEmployee } = useSession();
   const tr = useTracker();
   const router = useRouter();
   const [blocked, setBlocked] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoMsg, setPhotoMsg] = useState<string | null>(null);
   const [pickingLanguage, setPickingLanguage] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState<'name' | 'pin' | null>(null);
 
   const isAdmin = employee?.role === 'admin';
@@ -52,8 +55,8 @@ export default function Profile() {
 
   async function logout() {
     // Orët që s'janë dërguar ende ruhen vetëm në këtë telefon, prandaj nuk lejojmë daljen para dërgimit.
-    await tr.syncNow();
-    if (tr.hasUnsynced()) {
+    if (!demo) await tr.syncNow();
+    if (!demo && tr.hasUnsynced()) {
       setBlocked(true);
       return;
     }
@@ -61,7 +64,28 @@ export default function Profile() {
     router.replace('/login');
   }
 
+  async function deleteAccount() {
+    if (!employee || deleting) return;
+    setDeleting(true);
+    setPhotoMsg(null);
+    // Foto fshihet para se llogaria të bllokohet (pas kësaj s'ka më qasje).
+    if (employee.avatar_path) await removeAvatar(employee.avatar_path);
+    const { error } = await supabase.rpc('delete_my_account');
+    setDeleting(false);
+    setConfirmDelete(false);
+    if (error) {
+      setPhotoMsg(t('deleteFailed'));
+      return;
+    }
+    await signOut();
+    router.replace('/login');
+  }
+
   function requestDeletion() {
+    if (!isAdmin) {
+      setConfirmDelete(true);
+      return;
+    }
     const subject = encodeURIComponent(t('deleteSubject'));
     const body = encodeURIComponent(`${fullName} (${employee?.personnel_no ?? ''})`);
     Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`);
@@ -71,11 +95,13 @@ export default function Profile() {
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         <View style={styles.identity}>
-          <Pressable onPress={changePhoto} disabled={photoBusy} accessibilityRole="button" accessibilityLabel={t('photoChange')}>
+          <Pressable onPress={changePhoto} disabled={photoBusy || demo} accessibilityRole="button" accessibilityLabel={t('photoChange')}>
             {employee && <Avatar path={employee.avatar_path} first={employee.first_name} last={employee.last_name} size={104} />}
+            {!demo && (
             <View style={styles.badge}>
               {photoBusy ? <ActivityIndicator size="small" color="#fff" /> : <Icon name="camera" color="#fff" size={16} filled />}
             </View>
+            )}
           </Pressable>
           <Text style={styles.name}>{fullName}</Text>
           <View style={styles.meta}>
@@ -92,12 +118,16 @@ export default function Profile() {
           {photoMsg ? <Text style={styles.warn}>{photoMsg}</Text> : null}
         </View>
 
-        <Group title={t('profileAccount')}>
-          <Row icon="user" label={t('changeName')} value={fullName} onPress={() => setEditing('name')} />
-          <Row icon="lock" label={t('changePin')} onPress={() => setEditing('pin')} />
-        </Group>
+        {demo && <Text style={styles.demoBanner}>{t('demoBanner')}</Text>}
 
-        {!isAdmin && (
+        {!demo && (
+          <Group title={t('profileAccount')}>
+            <Row icon="user" label={t('changeName')} value={fullName} onPress={() => setEditing('name')} />
+            <Row icon="lock" label={t('changePin')} onPress={() => setEditing('pin')} />
+          </Group>
+        )}
+
+        {!isAdmin && !demo && (
           <Group title={t('profileWork')}>
             <Row icon="calendarCheck" label={t('routineTitle')} onPress={() => router.push('/profile/routine')} />
           </Group>
@@ -119,18 +149,33 @@ export default function Profile() {
 
         <Group title={t('profileLegal')}>
           <Row icon="shieldCheck" label={t('privacy')} onPress={() => Linking.openURL(PRIVACY_URL)} />
-          <Row icon="trash" label={t('deleteAccount')} onPress={requestDeletion} />
+          {!demo && <Row icon="trash" label={t('deleteAccount')} onPress={requestDeletion} />}
         </Group>
 
         {blocked && <Text style={styles.warn}>{t('logoutPending')}</Text>}
         <Group>
-          <Row icon="signOut" label={t('logout')} onPress={logout} danger plain />
+          <Row icon="signOut" label={demo ? t('demoExit') : t('logout')} onPress={logout} danger plain />
         </Group>
 
         <Text style={styles.version}>
           {t('appVersion', { v: Constants.expoConfig?.version ?? '1.0.0' })} · AZ Trockenbau & Innenausbau
         </Text>
       </ScrollView>
+
+      <Modal visible={confirmDelete} transparent statusBarTranslucent animationType="fade" onRequestClose={() => setConfirmDelete(false)}>
+        <Pressable style={styles.backdrop} onPress={() => !deleting && setConfirmDelete(false)}>
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            <Text style={styles.sheetTitle}>{t('deleteConfirmTitle')}</Text>
+            <Text style={styles.confirmText}>{t('deleteConfirmText')}</Text>
+            <Pressable style={[styles.option, { borderColor: colors.stop }]} onPress={deleteAccount} disabled={deleting} accessibilityRole="button">
+              {deleting ? <ActivityIndicator color={colors.stop} /> : <Text style={[styles.optionText, { color: colors.stop }]}>{t('deleteConfirmButton')}</Text>}
+            </Pressable>
+            <Pressable style={styles.option} onPress={() => setConfirmDelete(false)} disabled={deleting} accessibilityRole="button">
+              <Text style={styles.optionText}>{t('cancel')}</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {editing === 'name' && <NameModal onClose={() => setEditing(null)} />}
       {editing === 'pin' && <PinModal onClose={() => setEditing(null)} />}
@@ -186,10 +231,12 @@ const styles = StyleSheet.create({
   username: { fontSize: 15, color: colors.muted },
   removePhoto: { fontSize: 14, color: colors.muted, fontWeight: '600', textDecorationLine: 'underline' },
   warn: { color: colors.warn, fontSize: 14, textAlign: 'center' },
+  demoBanner: { backgroundColor: colors.primarySoft, color: colors.primary, fontSize: 14, fontWeight: '600', textAlign: 'center', borderRadius: 12, padding: 12, overflow: 'hidden' },
   version: { textAlign: 'center', color: colors.muted, fontSize: 12, marginTop: 4 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.bg, padding: 20, paddingTop: 10, paddingBottom: 30, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   grabber: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: colors.border, marginBottom: 14 },
+  confirmText: { fontSize: 15, lineHeight: 22, color: colors.muted, marginBottom: 14 },
   sheetTitle: { fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 12 },
   options: { gap: 8 },
   option: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 16 },

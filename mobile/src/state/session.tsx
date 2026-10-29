@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { configured, workerEmail } from '../lib/config';
 import { supabase } from '../lib/supabase';
 import { clearTrackerState } from '../lib/storage';
+import { DEMO_EMPLOYEE } from '../lib/demo';
 
 export interface Employee {
   id: string;
@@ -18,6 +19,9 @@ interface SessionCtx {
   loading: boolean;
   session: Session | null;
   employee: Employee | null;
+  /** Modaliteti Demo: punëtor shembull lokal, pa llogari dhe pa server. */
+  demo: boolean;
+  startDemo: () => void;
   signIn: (personnelNo: string, pin: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   refreshEmployee: () => Promise<void>;
@@ -27,6 +31,8 @@ const Ctx = createContext<SessionCtx>({
   loading: true,
   session: null,
   employee: null,
+  demo: false,
+  startDemo: () => {},
   signIn: async () => false,
   signOut: async () => {},
   refreshEmployee: async () => {},
@@ -46,6 +52,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(configured);
   const [session, setSession] = useState<Session | null>(null);
   const [employee, setEmployee] = useState<Employee | null>(null);
+  const [demo, setDemo] = useState(false);
 
   useEffect(() => {
     if (!configured) return;
@@ -76,11 +83,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return true;
   }, []);
 
+  const startDemo = useCallback(() => {
+    setDemo(true);
+    setEmployee(DEMO_EMPLOYEE);
+  }, []);
+
   const signOut = useCallback(async () => {
+    if (demo) {
+      setDemo(false);
+      setEmployee(null);
+      return;
+    }
     await supabase.auth.signOut();
     await clearTrackerState();
     setEmployee(null);
-  }, []);
+  }, [demo]);
 
   const refreshEmployee = useCallback(async () => {
     if (!session) return;
@@ -89,8 +106,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [session]);
 
   const value = useMemo(
-    () => ({ loading, session, employee, signIn, signOut, refreshEmployee }),
-    [loading, session, employee, signIn, signOut, refreshEmployee],
+    () => ({ loading, session, employee, demo, startDemo, signIn, signOut, refreshEmployee }),
+    [loading, session, employee, demo, startDemo, signIn, signOut, refreshEmployee],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
