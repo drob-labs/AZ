@@ -19,7 +19,7 @@ const LANGUAGE_NAMES: Record<Locale, string> = { sq: 'Shqip', de: 'Deutsch', en:
 
 export default function Profile() {
   const { t, locale, setLocale } = useI18n();
-  const { employee, demo, signOut, refreshEmployee } = useSession();
+  const { employee, signOut, refreshEmployee } = useSession();
   const tr = useTracker();
   const router = useRouter();
   const [blocked, setBlocked] = useState(false);
@@ -55,8 +55,8 @@ export default function Profile() {
 
   async function logout() {
     // Orët që s'janë dërguar ende ruhen vetëm në këtë telefon, prandaj nuk lejojmë daljen para dërgimit.
-    if (!demo) await tr.syncNow();
-    if (!demo && tr.hasUnsynced()) {
+    await tr.syncNow();
+    if (tr.hasUnsynced()) {
       setBlocked(true);
       return;
     }
@@ -95,13 +95,11 @@ export default function Profile() {
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
         <View style={styles.identity}>
-          <Pressable onPress={changePhoto} disabled={photoBusy || demo} accessibilityRole="button" accessibilityLabel={t('photoChange')}>
+          <Pressable onPress={changePhoto} disabled={photoBusy} accessibilityRole="button" accessibilityLabel={t('photoChange')}>
             {employee && <Avatar path={employee.avatar_path} first={employee.first_name} last={employee.last_name} size={104} />}
-            {!demo && (
             <View style={styles.badge}>
               {photoBusy ? <ActivityIndicator size="small" color="#fff" /> : <Icon name="camera" color="#fff" size={16} filled />}
             </View>
-            )}
           </Pressable>
           <Text style={styles.name}>{fullName}</Text>
           <View style={styles.meta}>
@@ -118,16 +116,12 @@ export default function Profile() {
           {photoMsg ? <Text style={styles.warn}>{photoMsg}</Text> : null}
         </View>
 
-        {demo && <Text style={styles.demoBanner}>{t('demoBanner')}</Text>}
+        <Group title={t('profileAccount')}>
+          <Row icon="user" label={t('changeName')} value={fullName} onPress={() => setEditing('name')} />
+          <Row icon="lock" label={t('changePin')} onPress={() => setEditing('pin')} />
+        </Group>
 
-        {!demo && (
-          <Group title={t('profileAccount')}>
-            <Row icon="user" label={t('changeName')} value={fullName} onPress={() => setEditing('name')} />
-            <Row icon="lock" label={t('changePin')} onPress={() => setEditing('pin')} />
-          </Group>
-        )}
-
-        {!isAdmin && !demo && (
+        {!isAdmin && (
           <Group title={t('profileWork')}>
             <Row icon="calendarCheck" label={t('routineTitle')} onPress={() => router.push('/profile/routine')} />
           </Group>
@@ -149,12 +143,12 @@ export default function Profile() {
 
         <Group title={t('profileLegal')}>
           <Row icon="shieldCheck" label={t('privacy')} onPress={() => Linking.openURL(PRIVACY_URL)} />
-          {!demo && <Row icon="trash" label={t('deleteAccount')} onPress={requestDeletion} />}
+          <Row icon="trash" label={t('deleteAccount')} onPress={requestDeletion} />
         </Group>
 
         {blocked && <Text style={styles.warn}>{t('logoutPending')}</Text>}
         <Group>
-          <Row icon="signOut" label={demo ? t('demoExit') : t('logout')} onPress={logout} danger plain />
+          <Row icon="signOut" label={t('logout')} onPress={logout} danger plain />
         </Group>
 
         <Text style={styles.version}>
@@ -231,7 +225,6 @@ const styles = StyleSheet.create({
   username: { fontSize: 15, color: colors.muted },
   removePhoto: { fontSize: 14, color: colors.muted, fontWeight: '600', textDecorationLine: 'underline' },
   warn: { color: colors.warn, fontSize: 14, textAlign: 'center' },
-  demoBanner: { backgroundColor: colors.primarySoft, color: colors.primary, fontSize: 14, fontWeight: '600', textAlign: 'center', borderRadius: 12, padding: 12, overflow: 'hidden' },
   version: { textAlign: 'center', color: colors.muted, fontSize: 12, marginTop: 4 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.bg, padding: 20, paddingTop: 10, paddingBottom: 30, borderTopLeftRadius: 24, borderTopRightRadius: 24 },

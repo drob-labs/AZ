@@ -18,7 +18,7 @@ import { colors } from '../src/ui/theme';
 
 export default function Login() {
   const { t, locale, setLocale } = useI18n();
-  const { signIn, startDemo } = useSession();
+  const { signIn } = useSession();
   const router = useRouter();
   const [personnelNo, setPersonnelNo] = useState('');
   const [pin, setPin] = useState('');
@@ -83,16 +83,6 @@ export default function Login() {
           {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{t('loginButton')}</Text>}
         </Pressable>
 
-        <Pressable
-          style={styles.demoButton}
-          onPress={() => {
-            startDemo();
-            router.replace('/');
-          }}
-          accessibilityRole="button"
-        >
-          <Text style={styles.demoText}>{t('demoButton')}</Text>
-        </Pressable>
         <Pressable style={styles.infoButton} onPress={() => router.push('/info')} accessibilityRole="button" hitSlop={8}>
           <Text style={styles.infoText}>{t('infoButton')}</Text>
         </Pressable>
@@ -126,8 +116,6 @@ const styles = StyleSheet.create({
   button: { backgroundColor: colors.primary, borderRadius: 12, padding: 18, alignItems: 'center', marginTop: 6 },
   buttonDisabled: { opacity: 0.45 },
   buttonText: { color: '#fff', fontSize: 20, fontWeight: '700' },
-  demoButton: { borderWidth: 1.5, borderColor: colors.primary, borderRadius: 12, padding: 14, alignItems: 'center' },
-  demoText: { color: colors.primary, fontSize: 17, fontWeight: '700' },
   infoButton: { alignItems: 'center', padding: 4 },
   infoText: { color: colors.muted, fontSize: 15, fontWeight: '600', textDecorationLine: 'underline' },
   error: { color: colors.stop, fontSize: 16, textAlign: 'center' },

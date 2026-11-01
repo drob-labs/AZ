@@ -31,8 +31,8 @@ const Ctx = createContext<ChatCtx>({
 const REFRESH_DEBOUNCE_MS = 300;
 
 export function ChatProvider({ children }: { children: ReactNode }) {
-  const { employee, demo } = useSession();
-  const employeeId = demo ? null : (employee?.id ?? null);
+  const { employee } = useSession();
+  const employeeId = employee?.id ?? null;
   const [overview, setOverview] = useState<RoomOverview[]>([]);
   const [people, setPeople] = useState<Map<string, Person>>(new Map());
   const [blocked, setBlocked] = useState<Set<string>>(new Set());

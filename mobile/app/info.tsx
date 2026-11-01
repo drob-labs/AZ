@@ -4,7 +4,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../src/i18n';
 import { HELP } from '../src/i18n/help';
 import { PRIVACY_URL, SUPPORT_EMAIL } from '../src/lib/config';
-import { useSession } from '../src/state/session';
 import { Logo } from '../src/ui/Logo';
 import { colors } from '../src/ui/theme';
 
@@ -12,7 +11,6 @@ import { colors } from '../src/ui/theme';
 export default function Info() {
   const { t, locale } = useI18n();
   const router = useRouter();
-  const { startDemo } = useSession();
   const faq = HELP[locale].worker;
 
   return (
@@ -43,17 +41,6 @@ export default function Info() {
             ))}
           </View>
         ))}
-
-        <Pressable
-          style={styles.demo}
-          onPress={() => {
-            startDemo();
-            router.replace('/');
-          }}
-          accessibilityRole="button"
-        >
-          <Text style={styles.demoText}>{t('demoButton')}</Text>
-        </Pressable>
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>{t('infoContact')}</Text>
@@ -91,6 +78,4 @@ const styles = StyleSheet.create({
   q: { fontSize: 15, fontWeight: '600', color: colors.text, marginTop: 4 },
   text: { fontSize: 15, lineHeight: 22, color: colors.muted },
   link: { fontSize: 16, color: colors.primary, fontWeight: '600', textDecorationLine: 'underline' },
-  demo: { backgroundColor: colors.primary, borderRadius: 12, padding: 16, alignItems: 'center' },
-  demoText: { color: '#fff', fontSize: 18, fontWeight: '700' },
 });
