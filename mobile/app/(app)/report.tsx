@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
@@ -33,7 +34,11 @@ interface Person {
   openCount: number;
 }
 
-const monthTitle = (m: string): string => `${m.slice(5, 7)}.${m.slice(0, 4)}`;
+/** Muajt para këtij nuk shfaqen kurrë. */
+const FIRST_MONTH = '2026-08';
+const DELETED_MONTHS_KEY = 'az.report.deletedMonths';
+
+const monthTitle = (m: string, names: string[]): string => `${names[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
 
 function shiftMonth(prefix: string, delta: number): string {
   const [y, m] = prefix.split('-').map(Number);
@@ -81,6 +86,33 @@ export default function MonthReport() {
   const [selected, setSelected] = useState<Person | null>(null);
   const [includePay, setIncludePay] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
+  // Muajt e fshirë (ruhen në pajisje): shigjetat i anashkalojnë, por muajt e tjerë mbeten të dukshëm.
+  const [deletedMonths, setDeletedMonths] = useState<string[]>([]);
+  const [pdfMonths, setPdfMonths] = useState<Set<string>>(new Set());
+  const [confirmPdf, setConfirmPdf] = useState(false);
+  const [confirmDeleteMonth, setConfirmDeleteMonth] = useState(false);
+  const names = t('monthNames').split(',');
+  const currentMonth = berlinParts(nowIso()).date.slice(0, 7);
+
+  useEffect(() => {
+    AsyncStorage.getItem(DELETED_MONTHS_KEY)
+      .then((v) => {
+        if (v) setDeletedMonths(JSON.parse(v) as string[]);
+      })
+      .catch(() => {});
+  }, []);
+
+  /** Muaji më i afërt që nuk është fshirë, ose null nëse del jashtë kufirit të Gushtit 2026. */
+  const stepMonth = (from: string, delta: 1 | -1): string | null => {
+    let m = shiftMonth(from, delta);
+    while (deletedMonths.includes(m)) m = shiftMonth(m, delta);
+    return m < FIRST_MONTH ? null : m;
+  };
+  const prevMonth = stepMonth(month, -1);
+
+  useEffect(() => {
+    if (month < FIRST_MONTH) setMonth(FIRST_MONTH);
+  }, [month]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -182,7 +214,38 @@ export default function MonthReport() {
     }
   }
 
-  const doPdf = () => report && run(() => exportPdf(reportHtml(report), `Stunden_${month}.pdf`), t('exportFailed'));
+  const doPdf = () => {
+    setConfirmPdf(false);
+    if (!report) return;
+    const m = month;
+    return run(async () => {
+      await exportPdf(reportHtml(report), `Stunden_${m}.pdf`);
+      setPdfMonths((prev) => new Set(prev).add(m));
+    }, t('exportFailed'));
+  };
+
+  async function doDeleteMonth() {
+    setConfirmDeleteMonth(false);
+    const m = month;
+    await run(async () => {
+      const { error } = await supabase.rpc('delete_month', { p_year: Number(m.slice(0, 4)), p_month: Number(m.slice(5, 7)) });
+      if (error) {
+        setMessage(`${t('genericFail')} ${error.message}`);
+        return;
+      }
+      const deleted = [...deletedMonths, m];
+      AsyncStorage.setItem(DELETED_MONTHS_KEY, JSON.stringify(deleted)).catch(() => {});
+      setDeletedMonths(deleted);
+      let next = shiftMonth(m, 1);
+      while (deleted.includes(next)) next = shiftMonth(next, 1);
+      setPdfMonths((prev) => {
+        const s = new Set(prev);
+        s.delete(m);
+        return s;
+      });
+      setMonth(next);
+    }, t('genericFail'));
+  }
 
   const doTimesheet = (person: Person) => {
     const line = report?.lines.find((l) => l.personnelNo === person.emp.personnelNo);
@@ -218,11 +281,16 @@ export default function MonthReport() {
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
         <Text style={styles.title}>{t('monthReport')}</Text>
         <View style={styles.monthRow}>
-          <Pressable onPress={() => setMonth((m) => shiftMonth(m, -1))} style={styles.arrow} accessibilityLabel="‹">
+          <Pressable
+            onPress={() => prevMonth && setMonth(prevMonth)}
+            disabled={!prevMonth}
+            style={[styles.arrow, !prevMonth && { opacity: 0.35 }]}
+            accessibilityLabel="‹"
+          >
             <Text style={styles.arrowText}>‹</Text>
           </Pressable>
-          <Text style={styles.month}>{month}</Text>
-          <Pressable onPress={() => setMonth((m) => shiftMonth(m, 1))} style={styles.arrow} accessibilityLabel="›">
+          <Text style={styles.month}>{monthTitle(month, names)}</Text>
+          <Pressable onPress={() => setMonth((m) => stepMonth(m, 1) ?? m)} style={styles.arrow} accessibilityLabel="›">
             <Text style={styles.arrowText}>›</Text>
           </Pressable>
           {people.length > 0 && (
@@ -246,7 +314,6 @@ export default function MonthReport() {
               {report.lines.map((l) => {
                 const person = personFor(l.personnelNo);
                 const closed = person ? isClosed(person.id) : false;
-                const hasOpen = (person?.openCount ?? 0) > 0;
                 return (
                   <Pressable
                     key={l.personnelNo}
@@ -259,17 +326,10 @@ export default function MonthReport() {
                     <Text style={styles.cNum}>{formatDuration(l.overtimeMin)}</Text>
                     <Text style={styles.cNum}>{(l.grossCents / 100).toFixed(2)} €</Text>
                     <View style={styles.cAct}>
-                      {closed ? (
-                        <Text style={styles.lock} accessibilityLabel={t('closedLabel')}>🔒</Text>
-                      ) : person ? (
-                        <Pressable
-                          style={[styles.pill, (busy || hasOpen) && styles.off]}
-                          disabled={busy || hasOpen}
-                          onPress={() => setConfirming(person)}
-                          accessibilityRole="button"
-                        >
-                          <Text style={styles.pillText}>{t('closeEmployee')}</Text>
-                        </Pressable>
+                      {person ? (
+                        <Text style={styles.lock} accessibilityLabel={closed ? t('closedLabel') : undefined}>
+                          {closed ? '🔒' : '🔓'}
+                        </Text>
                       ) : null}
                     </View>
                   </Pressable>
@@ -294,10 +354,20 @@ export default function MonthReport() {
             )}
 
             <View style={styles.btnRow}>
-              <Pressable style={[styles.btn, busy && styles.off]} disabled={busy} onPress={doPdf}>
+              <Pressable style={[styles.btn, busy && styles.off]} disabled={busy} onPress={() => setConfirmPdf(true)}>
                 <Text style={styles.btnText}>{t('exportPdf')}</Text>
               </Pressable>
             </View>
+            {pdfMonths.has(month) && month < currentMonth ? (
+              <Pressable
+                style={[styles.btn, styles.closeBtn, busy && styles.off]}
+                disabled={busy}
+                onPress={() => setConfirmDeleteMonth(true)}
+                accessibilityRole="button"
+              >
+                <Text style={styles.btnText}>{t('deleteMonth')}</Text>
+              </Pressable>
+            ) : null}
 
           </>
         )}
@@ -312,7 +382,7 @@ export default function MonthReport() {
                   {selected.emp.firstName} {selected.emp.lastName}
                 </Text>
                 <Text style={styles.note}>
-                  {selected.emp.personnelNo} · {monthTitle(month)}
+                  {selected.emp.personnelNo} · {monthTitle(month, names)}
                 </Text>
                 <View style={styles.payRow}>
                   <Switch value={includePay} onValueChange={setIncludePay} />
@@ -342,6 +412,40 @@ export default function MonthReport() {
             )}
           </Pressable>
         </Pressable>
+      </Modal>
+
+      <Modal visible={confirmPdf} transparent animationType="fade" onRequestClose={() => setConfirmPdf(false)}>
+        <View style={styles.backdrop}>
+          <View style={styles.sheet}>
+            <Text style={styles.sheetTitle}>{t('pdfConfirmTitle')}</Text>
+            <Text style={styles.note}>{t('pdfConfirmText', { month: monthTitle(month, names) })}</Text>
+            <View style={styles.btnRow}>
+              <Pressable style={[styles.btn, { backgroundColor: colors.muted }]} onPress={() => setConfirmPdf(false)}>
+                <Text style={styles.btnText}>{t('cancel')}</Text>
+              </Pressable>
+              <Pressable style={styles.btn} onPress={doPdf}>
+                <Text style={styles.btnText}>{t('pdfDownload')}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={confirmDeleteMonth} transparent animationType="fade" onRequestClose={() => setConfirmDeleteMonth(false)}>
+        <View style={styles.backdrop}>
+          <View style={styles.sheet}>
+            <Text style={[styles.sheetTitle, { color: colors.stop }]}>{t('deleteMonthSure', { month: monthTitle(month, names) })}</Text>
+            <Text style={styles.note}>{t('deleteMonthText')}</Text>
+            <View style={styles.btnRow}>
+              <Pressable style={[styles.btn, { backgroundColor: colors.muted }]} onPress={() => setConfirmDeleteMonth(false)}>
+                <Text style={styles.btnText}>{t('cancel')}</Text>
+              </Pressable>
+              <Pressable style={[styles.btn, styles.closeBtn]} onPress={doDeleteMonth}>
+                <Text style={styles.btnText}>{t('deleteMonth')}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       <Modal visible={confirming !== null} transparent animationType="fade" onRequestClose={() => setConfirming(null)}>
@@ -380,8 +484,6 @@ const styles = StyleSheet.create({
   trCenter: { alignItems: 'center' },
   cAct: { width: 66, alignItems: 'flex-end' },
   lock: { fontSize: 16 },
-  pill: { borderWidth: 1, borderColor: colors.stop, borderRadius: 14, paddingVertical: 4, paddingHorizontal: 10 },
-  pillText: { color: colors.stop, fontSize: 13, fontWeight: '700' },
   tr: { flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
   th: { backgroundColor: colors.bg },
   thText: { fontWeight: '700', color: colors.muted, fontSize: 13 },

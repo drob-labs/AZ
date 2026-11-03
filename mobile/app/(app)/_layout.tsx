@@ -69,7 +69,7 @@ export default function AppLayout() {
         <Tabs.Screen name="hours" options={{ title: t('tabHours'), tabBarIcon: tabIcon('clock'), ...workerOnly }} />
         <Tabs.Screen name="team" options={{ title: t('tabHome'), tabBarIcon: tabIcon('hardHat'), ...adminOnly }} />
         <Tabs.Screen name="admin-hours" options={{ title: t('adminTabHours'), tabBarIcon: tabIcon('clock'), ...adminOnly }} />
-        <Tabs.Screen name="report" options={{ title: t('tabMonth'), tabBarIcon: tabIcon('calendarBlank'), ...adminOnly }} />
+        <Tabs.Screen name="report"options={{ title: t('tabMonth'), tabBarIcon: tabIcon('calendarBlank'), ...adminOnly }} />
         <Tabs.Screen name="staff" options={{ title: t('tabStaff'), tabBarIcon: tabIcon('usersThree'), ...adminOnly }} />
         <Tabs.Screen name="appointments" options={{ title: t('appointmentsTitle'), tabBarIcon: tabIcon('calendarCheck'), ...adminOnly }} />
         {/* Chat-i: tab i fshehur (pa buton në footer) që footer-i të mbetet i dukshëm. display: none heq edhe vendin e butonit. */}

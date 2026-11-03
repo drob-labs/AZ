@@ -8,15 +8,18 @@ interface Props {
   onChange: (time: string) => void;
   label: string;
   doneLabel: string;
+  /** Hapi i minutave (5, 10, 15...), duhet ta ndajë 60. */
+  minuteStep?: number;
 }
 
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
-const MINUTES = ['00', '15', '30', '45'];
+const minutesFor = (step: number) => Array.from({ length: 60 / step }, (_, i) => String(i * step).padStart(2, '0'));
 
-// Zgjedhës kohe me formatin 24 orë dhe minuta vetëm 00/15/30/45 (zgjedhësit e sistemit nuk e kufizojnë këtë në të gjitha pajisjet).
-export function TimePicker({ value, onChange, label, doneLabel }: Props) {
+// Zgjedhës kohe me formatin 24 orë dhe minuta sipas hapit (parazgjedhja 00/15/30/45; zgjedhësit e sistemit nuk e kufizojnë këtë në të gjitha pajisjet).
+export function TimePicker({ value, onChange, label, doneLabel, minuteStep = 15 }: Props) {
   const [open, setOpen] = useState(false);
   const [hh, mm] = value.split(':');
+  const MINUTES = minutesFor(minuteStep);
 
   return (
     <View style={{ gap: 10 }}>

@@ -1,6 +1,6 @@
 import { useFocusEffect } from 'expo-router';
 import { getRandomValues } from 'expo-crypto';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -131,7 +131,6 @@ export default function Staff() {
                 {item.active ? '' : ` · ${t('inactive')}`}
               </Text>
             </View>
-            <Text style={styles.rate}>{euro(currentRate(item))}</Text>
           </Pressable>
         )}
       />
@@ -310,6 +309,19 @@ function DetailModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const scrollRef = useRef<{ scrollToEnd: (o?: { animated?: boolean }) => void }>(null);
+  const mounted = useRef(false);
+
+  // Kur hapet konfirmimi forma zgjatet: zbrit ekranin bashkë me butonat.
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    const id = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+    return () => clearTimeout(id);
+  }, [confirmingDelete]);
 
   const cents = parseRateCents(newRate);
   const lowRate = Number.isFinite(cents) && minWage !== null && cents < minWage;
@@ -342,6 +354,18 @@ function DetailModal({
     setInfo(`${t('pinResetDone')}: ${next}`);
   }
 
+  async function doDelete() {
+    setError(null);
+    setBusy(true);
+    const { error: err } = await supabase.rpc('delete_employee', { p_employee: emp.id });
+    setBusy(false);
+    if (err) {
+      setConfirmingDelete(false);
+      return setError(`${t('genericFail')} ${err.message}`);
+    }
+    onChanged();
+  }
+
   async function toggleActive() {
     setBusy(true);
     const { error: err } = await supabase.from('employees').update({ active: !emp.active }).eq('id', emp.id);
@@ -354,7 +378,13 @@ function DetailModal({
     <Modal visible transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
       <KeyboardBackdrop style={styles.backdrop}>
         <View style={styles.sheet}>
-          <ScrollView contentContainerStyle={{ gap: 10 }} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            ref={(r) => {
+              scrollRef.current = r;
+            }}
+            contentContainerStyle={{ gap: 10 }}
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={styles.sheetTitle}>
               {emp.first_name} {emp.last_name}
             </Text>
@@ -398,6 +428,26 @@ function DetailModal({
             >
               <Text style={styles.btnText}>{emp.active ? t('deactivate') : t('activate')}</Text>
             </Pressable>
+            {!emp.active ? (
+              confirmingDelete ? (
+                <View style={styles.confirmBox}>
+                  <Text style={styles.confirmTitle}>{t('siteDeleteSure')}</Text>
+                  <Text style={styles.note}>{t('employeeDeleteConfirm')}</Text>
+                  <View style={styles.btnRow}>
+                    <Pressable style={[styles.btn, { backgroundColor: colors.muted }]} onPress={() => setConfirmingDelete(false)} disabled={busy}>
+                      <Text style={styles.btnText}>{t('cancel')}</Text>
+                    </Pressable>
+                    <Pressable style={[styles.btn, { backgroundColor: colors.stop }, busy && { opacity: 0.5 }]} onPress={doDelete} disabled={busy}>
+                      {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{t('employeeDelete')}</Text>}
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <Pressable style={styles.deleteBtn} onPress={() => setConfirmingDelete(true)} accessibilityRole="button">
+                  <Text style={styles.deleteText}>{t('employeeDelete')}</Text>
+                </Pressable>
+              )
+            ) : null}
             <Pressable style={[styles.btn, { backgroundColor: colors.muted }]} onPress={onClose}>
               <Text style={styles.btnText}>{t('close')}</Text>
             </Pressable>
@@ -422,7 +472,10 @@ const styles = StyleSheet.create({
   row: { backgroundColor: colors.card, borderRadius: 12, padding: 16, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border },
   name: { fontSize: 18, fontWeight: '700', color: colors.text },
   sub: { fontSize: 15, color: colors.muted, marginTop: 2 },
-  rate: { fontSize: 18, fontWeight: '700', color: colors.text, fontVariant: ['tabular-nums'] },
+  deleteBtn: { borderRadius: 12, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: colors.stop },
+  deleteText: { color: colors.stop, fontSize: 17, fontWeight: '700' },
+  confirmBox: { borderRadius: 12, padding: 14, gap: 8, borderWidth: 1, borderColor: colors.stop },
+  confirmTitle: { fontSize: 17, fontWeight: '700', color: colors.stop },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.card, padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '92%' },
   sheetTitle: { fontSize: 22, fontWeight: '700', color: colors.text },

@@ -33,6 +33,12 @@ export function formatDuration(min: number): string {
   return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
 }
 
+/** 495 → "8 orë 15 min" (njësitë vijnë nga përkthimet) */
+export function formatDurationLong(min: number, hoursUnit: string, minutesUnit: string): string {
+  const m = Math.max(0, Math.round(min));
+  return `${Math.floor(m / 60)} ${hoursUnit} ${String(m % 60).padStart(2, '0')} ${minutesUnit}`;
+}
+
 /** Për kohëmatësin: "08:15:32" */
 export function formatClock(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));

@@ -1,5 +1,5 @@
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -127,7 +127,20 @@ function SiteModal({ site, onClose, onSaved }: { site: SiteRow | null; onClose: 
   const [newPhotoUri, setNewPhotoUri] = useState<string | null>(null);
   const [photoRemoved, setPhotoRemoved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const scrollRef = useRef<{ scrollToEnd: (o?: { animated?: boolean }) => void }>(null);
+  const mounted = useRef(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Kur shfaqet butoni Fshi ose konfirmimi, forma zgjatet: zbrit ekranin bashkë me butonat.
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    const id = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+    return () => clearTimeout(id);
+  }, [active, confirmingDelete]);
 
   const previewUri = newPhotoUri ?? (photoRemoved ? null : sitePhotoUrl(site?.photo_path));
 
@@ -139,6 +152,21 @@ function SiteModal({ site, onClose, onSaved }: { site: SiteRow | null; onClose: 
       setPhotoRemoved(false);
     } else if (res.status === 'denied') setError(t('photoDenied'));
     else if (res.status === 'error') setError(t('photoError'));
+  }
+
+  // Alert.alert nuk punon në web, prandaj konfirmimi shfaqet brenda formës.
+  async function doDelete() {
+    if (!site) return;
+    setBusy(true);
+    const { error: err } = await supabase.from('sites').delete().eq('id', site.id);
+    if (err) {
+      setBusy(false);
+      setConfirmingDelete(false);
+      return setError(t('genericFail'));
+    }
+    await removeSiteImage(site.photo_path);
+    setBusy(false);
+    onSaved();
   }
 
   async function save() {
@@ -184,7 +212,10 @@ function SiteModal({ site, onClose, onSaved }: { site: SiteRow | null; onClose: 
     <Modal visible transparent statusBarTranslucent animationType="slide" onRequestClose={onClose}>
       <KeyboardBackdrop style={styles.backdrop}>
         <View style={styles.sheet}>
-          <ScrollView contentContainerStyle={{ gap: 10 }} keyboardShouldPersistTaps="handled">
+          <ScrollView ref={(r) => {
+              scrollRef.current = r;
+            }}
+contentContainerStyle={{ gap: 10 }} keyboardShouldPersistTaps="handled">
             <Text style={styles.sheetTitle}>{site ? site.name : t('addSite')}</Text>
 
             <Text style={styles.label}>{t('sitePhoto')}</Text>
@@ -241,6 +272,26 @@ function SiteModal({ site, onClose, onSaved }: { site: SiteRow | null; onClose: 
             {!active && <Text style={styles.hint}>{t('siteFinishedHint')}</Text>}
 
             {error && <Text style={styles.error}>{error}</Text>}
+            {site && !site.active ? (
+              confirmingDelete ? (
+                <View style={styles.confirmBox}>
+                  <Text style={styles.confirmTitle}>{t('siteDeleteSure')}</Text>
+                  <Text style={styles.hint}>{t('siteDeleteConfirm')}</Text>
+                  <View style={styles.btnRow}>
+                    <Pressable style={[styles.btn, { backgroundColor: colors.muted }]} onPress={() => setConfirmingDelete(false)} disabled={busy}>
+                      <Text style={styles.btnText}>{t('cancel')}</Text>
+                    </Pressable>
+                    <Pressable style={[styles.btn, { backgroundColor: colors.stop }, busy && { opacity: 0.5 }]} onPress={doDelete} disabled={busy}>
+                      {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>{t('siteDelete')}</Text>}
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <Pressable style={styles.deleteBtn} onPress={() => setConfirmingDelete(true)} accessibilityRole="button">
+                  <Text style={styles.deleteText}>{t('siteDelete')}</Text>
+                </Pressable>
+              )
+            ) : null}
             <View style={styles.btnRow}>
               <Pressable style={[styles.btn, { backgroundColor: colors.muted }]} onPress={onClose}>
                 <Text style={styles.btnText}>{t('cancel')}</Text>
@@ -289,6 +340,10 @@ const styles = StyleSheet.create({
   label: { fontSize: 14, color: colors.muted },
   input: { borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, fontSize: 18, color: colors.text, backgroundColor: colors.bg },
   error: { color: colors.stop, fontSize: 15 },
+  deleteBtn: { borderRadius: 12, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: colors.stop },
+  confirmBox: { borderRadius: 12, padding: 14, gap: 8, borderWidth: 1, borderColor: colors.stop },
+  confirmTitle: { fontSize: 17, fontWeight: '700', color: colors.stop },
+  deleteText:{ color: colors.stop, fontSize: 17, fontWeight: '700' },
   btnRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
   btn: { flex: 1, backgroundColor: colors.primary, borderRadius: 12, padding: 14, alignItems: 'center' },
   btnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
