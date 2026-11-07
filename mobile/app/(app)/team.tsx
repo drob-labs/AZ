@@ -1,5 +1,5 @@
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Image, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../../src/i18n';
@@ -64,15 +64,12 @@ export default function Home() {
     setRefreshing(false);
   }, []);
 
-  useEffect(() => {
-    const id = setInterval(load, REFRESH_MS);
-    return () => clearInterval(id);
-  }, [load]);
-
-  // Tab-et mbeten të hapura, prandaj rifreskojmë sa herë që kthehesh në ekran.
+  // Tab-et mbeten të hapura: rifresko kur kthehesh në ekran dhe çdo 30 s vetëm sa është i dukshëm.
   useFocusEffect(
     useCallback(() => {
       load();
+      const id = setInterval(load, REFRESH_MS);
+      return () => clearInterval(id);
     }, [load]),
   );
 

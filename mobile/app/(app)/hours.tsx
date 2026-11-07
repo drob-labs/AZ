@@ -1,5 +1,5 @@
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { berlinParts } from '../../src/core/berlin';
@@ -67,15 +67,12 @@ export default function Hours() {
     setRefreshing(false);
   }, [employee, monthPrefix]);
 
-  useEffect(() => {
-    load();
-  }, [load, tr.pendingCount]);
-
-  // Tab-et mbeten të hapura, prandaj rifreskojmë sa herë që kthehesh në ekran.
+  // Tab-et mbeten të hapura, prandaj rifreskojmë kur kthehesh në ekran ose kur sinkronizohet diçka.
+  // (Një ngarkim i vetëm: useFocusEffect ekzekutohet edhe në hapje, pa nevojë për useEffect shtesë.)
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load]),
+    }, [load, tr.pendingCount]),
   );
 
   const { rows, totalMin } = useMemo(() => {

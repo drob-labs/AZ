@@ -73,6 +73,11 @@ export default function AdminHours() {
     setRefreshing(true);
     const from = new Date(Date.parse(`${month}-01T00:00:00Z`) - 86400000).toISOString();
     const to = new Date(Date.parse(`${shiftMonth(month, 1)}-01T00:00:00Z`) + 86400000).toISOString();
+    const empPromise = supabase
+      .from('employees')
+      .select('id, first_name, last_name, avatar_path')
+      .eq('role', 'worker')
+      .order('last_name');
     const all: ServerShift[] = [];
     for (let offset = 0; ; offset += PAGE) {
       const { data } = await supabase
@@ -85,11 +90,7 @@ export default function AdminHours() {
       all.push(...((data ?? []) as unknown as ServerShift[]));
       if (!data || data.length < PAGE) break;
     }
-    const empRes = await supabase
-      .from('employees')
-      .select('id, first_name, last_name, avatar_path')
-      .eq('role', 'worker')
-      .order('last_name');
+    const empRes = await empPromise;
     setEmps((empRes.data ?? []) as Emp[]);
 
     const inMonth = all.filter((s) => berlinParts(s.started_at).date.startsWith(month));
