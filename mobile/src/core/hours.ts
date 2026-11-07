@@ -11,6 +11,31 @@ export function requiredBreakMin(workedMin: number): number {
   return 0;
 }
 
+/** Minutat e pauzave të mbyllura; pauzat që mbivendosen (p.sh. e regjistruar dy herë) numërohen vetëm një herë. */
+function mergedBreakMin(breaks: Shift['breaks']): number {
+  const spans = breaks
+    .filter((b) => b.endedAt)
+    .map((b) => [Date.parse(b.startedAt), Date.parse(b.endedAt as string)] as const)
+    .sort((a, b) => a[0] - b[0]);
+  let total = 0;
+  let curStart = 0;
+  let curEnd = 0;
+  for (const [s, e] of spans) {
+    if (total === 0 && curEnd === 0) {
+      curStart = s;
+      curEnd = e;
+    } else if (s <= curEnd) {
+      curEnd = Math.max(curEnd, e);
+    } else {
+      total += curEnd - curStart;
+      curStart = s;
+      curEnd = e;
+    }
+  }
+  total += curEnd - curStart;
+  return Math.round(total / 60000);
+}
+
 export function calculateDay(shift: Shift): DayResult {
   const warnings: Warning[] = [];
   const date = berlinParts(shift.startedAt).date;
@@ -21,10 +46,7 @@ export function calculateDay(shift: Shift): DayResult {
   }
 
   const grossMin = minutesBetween(shift.startedAt, shift.endedAt);
-  const buttonBreakMin = shift.breaks.reduce(
-    (sum, b) => (b.endedAt ? sum + minutesBetween(b.startedAt, b.endedAt) : sum),
-    0,
-  );
+  const buttonBreakMin = mergedBreakMin(shift.breaks);
   const breakMin = buttonBreakMin + (shift.declaredBreakMin ?? 0);
   const workedMin = Math.max(0, grossMin - breakMin);
 

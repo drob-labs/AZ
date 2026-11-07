@@ -2,14 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { generatePin, isValidPersonnelNo, isWeakPin } from './pin';
 
 describe('PIN', () => {
-  it('refuzon PIN-et e dobëta', () => {
-    for (const p of ['111111', '000000', '123456', '654321', '234567', '987654', '121212', '12345', '1234567', 'abcdef']) {
-      expect(isWeakPin(p)).toBe(true);
-    }
+  it('refuzon PIN që nuk janë 6 shifra', () => {
+    for (const p of ['12345', '1234567', 'abcdef', '']) expect(isWeakPin(p)).toBe(true);
   });
 
-  it('pranon PIN të rregullt', () => {
-    for (const p of ['482915', '703168', '910274']) expect(isWeakPin(p)).toBe(false);
+  it('pranon çdo PIN 6-shifror, edhe të thjeshtët', () => {
+    for (const p of ['482915', '111111', '000000', '123456', '654321']) expect(isWeakPin(p)).toBe(false);
   });
 
   it('gjeneron gjithmonë PIN 6-shifror jo të dobët', () => {

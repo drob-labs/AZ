@@ -77,10 +77,26 @@ export default function Today() {
   }
 
   useEffect(() => {
-    if (tr.status === 'idle') return;
+    if (tr.status === 'idle' && !autoShift) return;
     const id = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [tr.status]);
+  }, [tr.status, autoShift]);
+
+  // Turni automatik (rutina) është në punë edhe pse kohëmatësi lokal është i ndalur: tregojmë kohën e tij, pa pauzën e rutinës.
+  const autoWorkedMs = (() => {
+    if (!autoShift || !routine) return 0;
+    const start = Date.parse(autoShift.started_at);
+    let ms = nowMs - start;
+    if (routine.breakMin > 0 && routine.breakStart) {
+      const [bh, bm] = routine.breakStart.split(':').map(Number);
+      // Ora e Berlinit -> UTC: nisim nga fillimi i turnit dhe shtojmë diferencën e orëve brenda ditës.
+      const [sh, sm] = berlinHhmm(autoShift.started_at).split(':').map(Number);
+      const breakFrom = start + ((bh * 60 + bm) - (sh * 60 + sm)) * 60000;
+      const breakTo = breakFrom + routine.breakMin * 60000;
+      ms -= Math.max(0, Math.min(nowMs, breakTo) - breakFrom);
+    }
+    return Math.max(0, ms);
+  })();
 
   function finish(totalBreakMin: number | null) {
     const done = tr.stop(totalBreakMin);
@@ -104,7 +120,8 @@ export default function Today() {
 
   const idle = tr.status === 'idle';
   const paused = tr.status === 'paused';
-  const statusText = idle ? t('statusIdle') : paused ? t('statusPaused') : t('statusWorking');
+  const autoWorking = idle && !!autoShift;
+  const statusText = autoWorking ? t('statusWorking') : idle ? t('statusIdle') : paused ? t('statusPaused') : t('statusWorking');
   const syncText = tr.syncError
     ? t('syncError')
     : tr.pendingCount > 0
@@ -115,7 +132,7 @@ export default function Today() {
     <SafeAreaView style={styles.screen} edges={['left', 'right']}>
       <View style={styles.header}>
         <Text style={styles.hello}>{employee ? `${employee.first_name} ${employee.last_name}` : ''}</Text>
-        <Text style={[styles.status, { color: idle ? colors.muted : paused ? colors.pause : colors.start }]}>
+        <Text style={[styles.status, { color: idle && !autoWorking ? colors.muted : paused ? colors.pause : colors.start }]}>
           {statusText}
         </Text>
       </View>
@@ -139,11 +156,11 @@ export default function Today() {
       <View style={styles.center}>
         <Text style={styles.timerLabel}>{t('workedToday')}</Text>
         <Text style={styles.timer} accessibilityLabel={t('workedToday')}>
-          {tr.current ? formatClock(workedMs(tr.current, nowMs)) : '00:00:00'}
+          {tr.current ? formatClock(workedMs(tr.current, nowMs)) : autoWorking ? formatClock(autoWorkedMs) : '00:00:00'}
         </Text>
-        {tr.current && (
+        {(tr.current || autoShift) && (
           <Text style={styles.since}>
-            {t('startedAt')} {formatTime(tr.current.startedAt)}
+            {t('startedAt')} {formatTime(tr.current?.startedAt ?? autoShift!.started_at)}
           </Text>
         )}
         {currentSite && (
